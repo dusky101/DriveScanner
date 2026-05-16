@@ -10,6 +10,8 @@ struct ContentView: View {
     @State private var isScanning = false
     @State private var mediaMeasurements: [MediaFolder: MediaFolderMeasurement] = [:]
     @State private var mediaLoading: Set<MediaFolder> = Set(MediaFolder.allCases)
+    @State private var homebrewInfo: HomebrewInfo?
+    @State private var brewLoading = false
     @State private var statusMessage = ""
     @State private var isExporting = false
 
@@ -47,6 +49,10 @@ struct ContentView: View {
                 mediaSizesTable
             }
 
+            GroupBox("Homebrew") {
+                homebrewSummary
+            }
+
             GroupBox("Items outside usual locations") {
                 VStack(alignment: .leading, spacing: 8) {
                     HStack {
@@ -63,15 +69,18 @@ struct ContentView: View {
                     }
                     Table(visibleCandidates, selection: $selection) {
                         TableColumn("Name") { item in
-                            HStack(spacing: 6) {
-                                Text(item.name)
-                                if item.isSymlink {
-                                    Text("symlink")
-                                        .font(.caption2)
-                                        .padding(.horizontal, 4)
-                                        .padding(.vertical, 1)
-                                        .background(Color.secondary.opacity(0.2))
-                                        .clipShape(RoundedRectangle(cornerRadius: 3))
+                            VStack(alignment: .leading, spacing: 2) {
+                                HStack(spacing: 4) {
+                                    Text(item.name)
+                                    if item.isSymlink {
+                                        chip("symlink", color: .orange)
+                                    }
+                                }
+                                HStack(spacing: 4) {
+                                    chip(item.category.displayLabel, color: color(for: item.category))
+                                    if let stack = item.stack {
+                                        chip(stack.displayLabel, color: .secondary)
+                                    }
                                 }
                             }
                         }
@@ -120,6 +129,7 @@ struct ContentView: View {
         .padding()
         .task {
             await measureMediaFoldersInitial()
+            await loadHomebrew()
         }
     }
 
@@ -148,6 +158,52 @@ struct ContentView: View {
         }
     }
 
+    private var homebrewSummary: some View {
+        HStack(spacing: 16) {
+            if brewLoading {
+                ProgressView().controlSize(.small)
+                Text("Reading brew bundle…")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else if let info = homebrewInfo, !info.isEmpty {
+                Text("\(info.formulaCount) formulae, \(info.caskCount) casks, \(info.tapCount) taps")
+                    .font(.callout)
+                if info.masCount > 0 {
+                    Text("+ \(info.masCount) Mac App Store")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                Text(info.brewPath)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            } else {
+                Text("Homebrew not detected")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private func chip(_ text: String, color: Color) -> some View {
+        Text(text.uppercased())
+            .font(.system(size: 9, weight: .bold))
+            .padding(.horizontal, 5)
+            .padding(.vertical, 1)
+            .background(color.opacity(0.85))
+            .foregroundStyle(.white)
+            .clipShape(RoundedRectangle(cornerRadius: 3))
+    }
+
+    private func color(for category: CandidateCategory) -> Color {
+        switch category {
+        case .codeProject: return .green
+        case .personalData: return .blue
+        case .devConfig: return .purple
+        case .looseFile: return .gray
+        }
+    }
+
     @MainActor
     private func measureMediaFoldersInitial() async {
         for folder in MediaFolder.allCases {
@@ -161,6 +217,13 @@ struct ContentView: View {
     }
 
     @MainActor
+    private func loadHomebrew() async {
+        brewLoading = true
+        defer { brewLoading = false }
+        homebrewInfo = await HomebrewService.enumerate()
+    }
+
+    @MainActor
     private func runScan() async {
         scanError = nil
         isScanning = true
@@ -170,16 +233,20 @@ struct ContentView: View {
             let next = try HomeScanner.scanCandidates()
             candidates = next
             selection = []
-            statusMessage = "Found \(next.count) top-level item(s)."
+            let projects = next.filter { $0.category == .codeProject }.count
+            let configs = next.filter { $0.category == .devConfig }.count
+            statusMessage = "Found \(next.count) item(s) — \(projects) projects, \(configs) dev configs."
         } catch {
             scanError = error.localizedDescription
             candidates = []
             selection = []
         }
         await measureMediaFoldersInitial()
+        if homebrewInfo == nil {
+            await loadHomebrew()
+        }
     }
 
-    /// Maps `ExportProgress.completedCount` (0-based index while working) to a 1-based step capped at `totalCount` so the final callback never shows `total+1`.
     private func exportProgressStep(_ p: ExportProgress) -> Int {
         guard p.totalCount > 0 else { return 0 }
         return min(p.completedCount + 1, p.totalCount)
@@ -214,6 +281,7 @@ struct ContentView: View {
         do {
             let rollup = try HomeScanner.buildFolderRollup(forSelectedURLs: selectedURLs)
             let selectedItems = candidates.filter { selection.contains($0.id) }
+            let excludedItems = candidates.filter { !selection.contains($0.id) }
             let userContext = UserContext(
                 fullName: NSFullUserName(),
                 shortName: NSUserName(),
@@ -224,9 +292,10 @@ struct ContentView: View {
             let html = HTMLReportBuilder.buildReport(
                 userContext: userContext,
                 selectedItems: selectedItems,
-                allCandidatesCount: candidates.count,
+                excludedItems: excludedItems,
                 rollup: rollup,
-                mediaMeasurements: mediaList
+                mediaMeasurements: mediaList,
+                homebrew: homebrewInfo
             )
             try html.write(to: url, atomically: true, encoding: .utf8)
             statusMessage = "Saved report to \(url.path)"

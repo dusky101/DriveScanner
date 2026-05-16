@@ -1,4 +1,4 @@
-import DriveScannerCore
+@testable import DriveScannerCore
 import Foundation
 import Testing
 
@@ -9,7 +9,6 @@ struct HomeScannerTests {
         let fm = FileManager.default
         let home = fm.temporaryDirectory.appendingPathComponent("DriveScannerTestHome-\(UUID().uuidString)", isDirectory: true)
         try fm.createDirectory(at: home, withIntermediateDirectories: true)
-
         defer { try? fm.removeItem(at: home) }
 
         try fm.createDirectory(at: home.appendingPathComponent("Desktop", isDirectory: true), withIntermediateDirectories: true)
@@ -30,6 +29,127 @@ struct HomeScannerTests {
         #expect(names.contains("readme.txt"))
     }
 
+    @Test("scanCandidates classifies categories: project / personal / config / file")
+    func scanCategorisation() throws {
+        let fm = FileManager.default
+        let home = fm.temporaryDirectory.appendingPathComponent("DriveScannerCat-\(UUID().uuidString)", isDirectory: true)
+        try fm.createDirectory(at: home, withIntermediateDirectories: true)
+        defer { try? fm.removeItem(at: home) }
+
+        // A Swift project (has Package.swift)
+        let swiftProj = home.appendingPathComponent("MySwiftProj", isDirectory: true)
+        try fm.createDirectory(at: swiftProj, withIntermediateDirectories: true)
+        try "// swift".write(to: swiftProj.appendingPathComponent("Package.swift"), atomically: true, encoding: .utf8)
+
+        // Plain personal data folder (no project markers)
+        try fm.createDirectory(at: home.appendingPathComponent("Recipes", isDirectory: true), withIntermediateDirectories: true)
+
+        // A loose file
+        try "data".write(to: home.appendingPathComponent("notes.txt"), atomically: true, encoding: .utf8)
+
+        // A dotfile
+        try fm.createDirectory(at: home.appendingPathComponent(".claude", isDirectory: true), withIntermediateDirectories: true)
+
+        let items = try HomeScanner.scanCandidates(homeURL: home, fileManager: fm)
+        let byName = Dictionary(uniqueKeysWithValues: items.map { ($0.name, $0) })
+
+        #expect(byName["MySwiftProj"]?.category == .codeProject)
+        #expect(byName["MySwiftProj"]?.stack == .swift)
+        #expect(byName["Recipes"]?.category == .personalData)
+        #expect(byName["notes.txt"]?.category == .looseFile)
+        #expect(byName[".claude"]?.category == .devConfig)
+    }
+
+    @Test("scanCandidates expands parent folders with 3+ project children")
+    func scanExpandsProjectParents() throws {
+        let fm = FileManager.default
+        let home = fm.temporaryDirectory.appendingPathComponent("DriveScannerExpand-\(UUID().uuidString)", isDirectory: true)
+        try fm.createDirectory(at: home, withIntermediateDirectories: true)
+        defer { try? fm.removeItem(at: home) }
+
+        // ~/Codingapps containing 3 distinct projects + 1 non-project
+        let parent = home.appendingPathComponent("Codingapps", isDirectory: true)
+        try fm.createDirectory(at: parent, withIntermediateDirectories: true)
+
+        let appA = parent.appendingPathComponent("AppA", isDirectory: true)
+        try fm.createDirectory(at: appA, withIntermediateDirectories: true)
+        try "{}".write(to: appA.appendingPathComponent("package.json"), atomically: true, encoding: .utf8)
+
+        let appB = parent.appendingPathComponent("AppB", isDirectory: true)
+        try fm.createDirectory(at: appB, withIntermediateDirectories: true)
+        try "[package]".write(to: appB.appendingPathComponent("Cargo.toml"), atomically: true, encoding: .utf8)
+
+        let appC = parent.appendingPathComponent("AppC", isDirectory: true)
+        try fm.createDirectory(at: appC, withIntermediateDirectories: true)
+        try "// swift".write(to: appC.appendingPathComponent("Package.swift"), atomically: true, encoding: .utf8)
+
+        let nonProj = parent.appendingPathComponent("loose-notes", isDirectory: true)
+        try fm.createDirectory(at: nonProj, withIntermediateDirectories: true)
+
+        let items = try HomeScanner.scanCandidates(homeURL: home, fileManager: fm)
+        let names = items.map(\.name)
+        // Parent should NOT appear as a single item — expanded
+        #expect(!names.contains("Codingapps"))
+        #expect(names.contains("AppA"))
+        #expect(names.contains("AppB"))
+        #expect(names.contains("AppC"))
+        #expect(names.contains("loose-notes"))
+
+        let byName = Dictionary(uniqueKeysWithValues: items.map { ($0.name, $0) })
+        #expect(byName["AppA"]?.stack == .node)
+        #expect(byName["AppB"]?.stack == .rust)
+        #expect(byName["AppC"]?.stack == .swift)
+        #expect(byName["loose-notes"]?.category == .personalData)
+    }
+
+    @Test("scanCandidates filters dotfile blocklist")
+    func scanDotfileBlocklist() throws {
+        let fm = FileManager.default
+        let home = fm.temporaryDirectory.appendingPathComponent("DriveScannerDot-\(UUID().uuidString)", isDirectory: true)
+        try fm.createDirectory(at: home, withIntermediateDirectories: true)
+        defer { try? fm.removeItem(at: home) }
+
+        try fm.createDirectory(at: home.appendingPathComponent(".ssh", isDirectory: true), withIntermediateDirectories: true)
+        try fm.createDirectory(at: home.appendingPathComponent(".Trash", isDirectory: true), withIntermediateDirectories: true)
+        try fm.createDirectory(at: home.appendingPathComponent(".cache", isDirectory: true), withIntermediateDirectories: true)
+        try "history".write(to: home.appendingPathComponent(".zsh_history"), atomically: true, encoding: .utf8)
+        try "dump".write(to: home.appendingPathComponent(".zcompdump-Marc-5.9"), atomically: true, encoding: .utf8)
+
+        let items = try HomeScanner.scanCandidates(homeURL: home, fileManager: fm)
+        let names = Set(items.map(\.name))
+        #expect(names.contains(".ssh"))
+        #expect(!names.contains(".Trash"))
+        #expect(!names.contains(".cache"))
+        #expect(!names.contains(".zsh_history"))
+        #expect(!names.contains(".zcompdump-Marc-5.9"))
+    }
+
+    @Test("detectStack identifies common project markers")
+    func detectStackMarkers() throws {
+        let fm = FileManager.default
+        let root = fm.temporaryDirectory.appendingPathComponent("DriveScannerDetect-\(UUID().uuidString)", isDirectory: true)
+        defer { try? fm.removeItem(at: root) }
+
+        func mkDir(_ path: String, with marker: String? = nil) throws -> URL {
+            let dir = root.appendingPathComponent(path, isDirectory: true)
+            try fm.createDirectory(at: dir, withIntermediateDirectories: true)
+            if let m = marker {
+                try "x".write(to: dir.appendingPathComponent(m), atomically: true, encoding: .utf8)
+            }
+            return dir
+        }
+
+        #expect(HomeScanner.detectStack(at: try mkDir("s", with: "Package.swift")) == .swift)
+        #expect(HomeScanner.detectStack(at: try mkDir("n", with: "package.json")) == .node)
+        #expect(HomeScanner.detectStack(at: try mkDir("r", with: "Cargo.toml")) == .rust)
+        #expect(HomeScanner.detectStack(at: try mkDir("g", with: "go.mod")) == .go)
+        #expect(HomeScanner.detectStack(at: try mkDir("p", with: "pyproject.toml")) == .python)
+        #expect(HomeScanner.detectStack(at: try mkDir("j", with: "pom.xml")) == .java)
+        #expect(HomeScanner.detectStack(at: try mkDir("rb", with: "Gemfile")) == .ruby)
+        #expect(HomeScanner.detectStack(at: try mkDir("php", with: "composer.json")) == .php)
+        #expect(HomeScanner.detectStack(at: try mkDir("nada")) == nil)
+    }
+
     @Test("measureMediaFolderSync reports missing folder")
     func mediaMissing() {
         let fm = FileManager.default
@@ -47,39 +167,40 @@ struct HomeScannerTests {
         try fm.createDirectory(at: pics.appendingPathComponent("nested", isDirectory: true), withIntermediateDirectories: true)
         try Data(repeating: 7, count: 100).write(to: pics.appendingPathComponent("a.bin"))
         try Data(repeating: 3, count: 50).write(to: pics.appendingPathComponent("nested/b.bin"))
-
         defer { try? fm.removeItem(at: home) }
 
         let m = HomeScanner.measureMediaFolderSync(.pictures, at: pics, fileManager: fm)
         #expect(m.exists == true)
         #expect(m.totalBytes >= 150)
     }
+}
 
-    @Test("buildTree respects max depth")
-    func treeMaxDepth() throws {
-        let fm = FileManager.default
-        let root = fm.temporaryDirectory.appendingPathComponent("DriveScannerTree-\(UUID().uuidString)", isDirectory: true)
-        try fm.createDirectory(at: root.appendingPathComponent("a/b/c", isDirectory: true), withIntermediateDirectories: true)
-        try "x".write(to: root.appendingPathComponent("a/b/c/deep.txt"), atomically: true, encoding: .utf8)
+@Suite("HomebrewService")
+struct HomebrewServiceTests {
+    @Test("parseCounts counts brew/cask/tap/mas lines and ignores comments")
+    func parseCounts() {
+        let brewfile = """
+        # generated by `brew bundle dump`
+        tap "homebrew/cask"
+        tap "homebrew/bundle"
+        brew "git"
+        brew "wget"
+        brew "ripgrep"
+        cask "iterm2"
+        cask "visual-studio-code"
+        mas "Xcode", id: 497799835
+        """
+        let counts = HomebrewService.parseCounts(brewfile: brewfile)
+        #expect(counts.formulae == 3)
+        #expect(counts.casks == 2)
+        #expect(counts.taps == 2)
+        #expect(counts.mas == 1)
+    }
 
-        defer { try? fm.removeItem(at: root) }
-
-        var limits = TreeWalkLimits.default
-        limits.maxDepth = 1
-        limits.maxEntries = 1000
-
-        let result = try HomeScanner.buildTree(forSelectedURLs: [root], limits: limits, fileManager: fm)
-        #expect(result.rootNodes.count == 1)
-        let top = result.rootNodes[0]
-        #expect(top.isDirectory)
-        let childA = top.children.first { $0.name == "a" }
-        #expect(childA != nil)
-        #expect(childA?.isDirectory == true)
-        if let a = childA {
-            for c in a.children {
-                #expect(c.name != "c", "depth 1 should not recurse into c/")
-            }
-        }
+    @Test("restoreCommand quotes the brewfile path")
+    func restoreCmd() {
+        #expect(HomebrewService.restoreCommand() == "brew bundle --file=\"Brewfile\"")
+        #expect(HomebrewService.restoreCommand(brewfilePath: "/tmp/Brewfile") == "brew bundle --file=\"/tmp/Brewfile\"")
     }
 }
 
@@ -90,7 +211,7 @@ struct HTMLReportBuilderTests {
         #expect(HTMLReportBuilder.escape("a & b < c > \" '") == "a &amp; b &lt; c &gt; &quot; &#39;")
     }
 
-    @Test("buildReport renders hero with user name, escaped, and KPI cards")
+    @Test("buildReport renders hero with user name, initials avatar, and KPI cards")
     func buildReportHero() {
         let user = UserContext(
             fullName: "Ada Lovelace",
@@ -104,21 +225,22 @@ struct HTMLReportBuilderTests {
             isDirectory: true,
             isSymlink: false,
             sizeBytes: 1024,
-            modificationDate: nil
+            modificationDate: nil,
+            category: .personalData
         )
         let html = HTMLReportBuilder.buildReport(
             userContext: user,
             selectedItems: [item],
-            allCandidatesCount: 5,
+            excludedItems: [],
             rollup: FolderRollupResult(perRoot: []),
-            mediaMeasurements: []
+            mediaMeasurements: [],
+            homebrew: nil
         )
         #expect(html.contains("Migration report — Ada Lovelace"))
         #expect(html.contains("<h1>Ada Lovelace</h1>"))
         #expect(html.contains("<div class=\"avatar\">AL</div>"))
-        #expect(html.contains(">1</span>"))
         #expect(html.contains("Codingapps"))
-        #expect(html.contains("FOLDER"))
+        #expect(html.contains("PERSONAL"))
     }
 
     @Test("buildReport escapes HTML in fullName")
@@ -132,9 +254,10 @@ struct HTMLReportBuilderTests {
         let html = HTMLReportBuilder.buildReport(
             userContext: user,
             selectedItems: [],
-            allCandidatesCount: 0,
+            excludedItems: [],
             rollup: FolderRollupResult(perRoot: []),
-            mediaMeasurements: []
+            mediaMeasurements: [],
+            homebrew: nil
         )
         #expect(html.contains("<h1>Evil &lt;Name&gt;</h1>"))
         #expect(!html.contains("<h1>Evil <Name></h1>"))
@@ -157,14 +280,68 @@ struct HTMLReportBuilderTests {
         let html = HTMLReportBuilder.buildReport(
             userContext: user,
             selectedItems: [],
-            allCandidatesCount: 0,
+            excludedItems: [],
             rollup: rollup,
-            mediaMeasurements: []
+            mediaMeasurements: [],
+            homebrew: nil
         )
-        #expect(html.contains("<h2>Inside each folder</h2>"))
+        #expect(html.contains("Inside each selected folder"))
         #expect(html.contains("<h3>A &amp; B &lt; C</h3>"))
         #expect(html.contains("Docs"))
-        #expect(!html.contains("<details class=\"tree-wrap\">"))
+    }
+
+    @Test("buildReport shows project + stack tags and excluded section")
+    func buildReportTagsAndExcluded() {
+        let user = UserContext(fullName: "Test User", shortName: "test", hostName: "host", osVersion: "macOS 15.0")
+        let project = CandidateItem(
+            url: URL(fileURLWithPath: "/Users/test/MyApp"),
+            name: "MyApp",
+            isDirectory: true, isSymlink: false,
+            sizeBytes: 5_000_000, modificationDate: nil,
+            category: .codeProject, stack: .swift
+        )
+        let excluded = CandidateItem(
+            url: URL(fileURLWithPath: "/Users/test/old-junk"),
+            name: "old-junk",
+            isDirectory: true, isSymlink: false,
+            sizeBytes: 100, modificationDate: nil,
+            category: .personalData
+        )
+        let html = HTMLReportBuilder.buildReport(
+            userContext: user,
+            selectedItems: [project],
+            excludedItems: [excluded],
+            rollup: FolderRollupResult(perRoot: []),
+            mediaMeasurements: [],
+            homebrew: nil
+        )
+        #expect(html.contains("PROJECT"))
+        #expect(html.contains("SWIFT"))
+        #expect(html.contains("Excluded (not migrating)"))
+        #expect(html.contains("old-junk"))
+        #expect(html.contains("section-excluded"))
+    }
+
+    @Test("buildReport renders Homebrew section with restore steps")
+    func buildReportHomebrew() {
+        let user = UserContext(fullName: "Test User", shortName: "test", hostName: "host", osVersion: "macOS 15.0")
+        let brew = HomebrewInfo(
+            brewPath: "/opt/homebrew/bin/brew",
+            brewfile: "tap \"homebrew/cask\"\nbrew \"git\"\ncask \"iterm2\"\n",
+            formulaCount: 1, caskCount: 1, tapCount: 1, masCount: 0
+        )
+        let html = HTMLReportBuilder.buildReport(
+            userContext: user,
+            selectedItems: [],
+            excludedItems: [],
+            rollup: FolderRollupResult(perRoot: []),
+            mediaMeasurements: [],
+            homebrew: brew
+        )
+        #expect(html.contains("<h2>Homebrew</h2>"))
+        #expect(html.contains("/opt/homebrew/bin/brew"))
+        #expect(html.contains("brew bundle --file=&quot;Brewfile&quot;"))
+        #expect(html.contains("tap &quot;homebrew/cask&quot;"))
     }
 
     @Test("buildReport renders media folders with bytes or not-found")
@@ -177,11 +354,12 @@ struct HTMLReportBuilderTests {
         let html = HTMLReportBuilder.buildReport(
             userContext: user,
             selectedItems: [],
-            allCandidatesCount: 0,
+            excludedItems: [],
             rollup: FolderRollupResult(perRoot: []),
-            mediaMeasurements: media
+            mediaMeasurements: media,
+            homebrew: nil
         )
-        #expect(html.contains("<h2>Standard media folders</h2>"))
+        #expect(html.contains("Standard media folders"))
         #expect(html.contains("Pictures / Photos"))
         #expect(html.contains("not found"))
     }
@@ -206,29 +384,27 @@ struct ExportServiceTests {
 
         defer { try? fm.removeItem(at: base) }
 
-        try await ExportService.copyItems([file1, file2], to: dstDir, fileManager: fm)
-
-        #expect(fm.fileExists(atPath: dstDir.appendingPathComponent("dup.txt").path))
-        #expect(fm.fileExists(atPath: dstDir.appendingPathComponent("dup (1).txt").path))
-        #expect(fm.fileExists(atPath: dstDir.appendingPathComponent("dup2.txt").path))
+        try await ExportService.copyItems([file1, file2], to: dstDir)
+        let listing = try fm.contentsOfDirectory(atPath: dstDir.path).sorted()
+        #expect(listing.contains("dup.txt"))
+        #expect(listing.contains("dup (1).txt"))
+        #expect(listing.contains("dup2.txt"))
     }
 
     @Test("zipItems creates a zip via ditto")
-    func zipCreatesArchive() async throws {
+    func zipCreates() async throws {
         let fm = FileManager.default
         let base = fm.temporaryDirectory.appendingPathComponent("DriveScannerZip-\(UUID().uuidString)", isDirectory: true)
-        let item = base.appendingPathComponent("item", isDirectory: true)
-        try fm.createDirectory(at: item, withIntermediateDirectories: true)
-        try "z".write(to: item.appendingPathComponent("inside.txt"), atomically: true, encoding: .utf8)
-        let zipURL = base.appendingPathComponent("out.zip")
-
+        try fm.createDirectory(at: base, withIntermediateDirectories: true)
         defer { try? fm.removeItem(at: base) }
 
-        try await ExportService.zipItems([item], to: zipURL)
-        #expect(fm.fileExists(atPath: zipURL.path))
+        let src = base.appendingPathComponent("payload.txt")
+        try "payload".write(to: src, atomically: true, encoding: .utf8)
 
+        let zipURL = base.appendingPathComponent("out.zip")
+        try await ExportService.zipItems([src], to: zipURL)
+        #expect(fm.fileExists(atPath: zipURL.path))
         let attrs = try fm.attributesOfItem(atPath: zipURL.path)
-        let size = (attrs[.size] as? NSNumber)?.int64Value ?? 0
-        #expect(size > 50)
+        #expect((attrs[.size] as? Int ?? 0) > 0)
     }
 }

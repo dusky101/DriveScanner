@@ -16,65 +16,120 @@ public enum HomeScanner: Sendable {
         "__macosx",
     ]
 
-    /// Top-level scan: non-skipped, non-junk children of `homeURL` with shallow size metadata.
+    /// Hidden top-level entries we never include (caches, history, regenerable junk).
+    public static let dotfileBlocklist: Set<String> = [
+        ".trash", ".cache", ".local", ".ds_store", ".cfusertextencoding",
+        ".zsh_history", ".zsh_sessions", ".python_history", ".viminfo", ".lesshst",
+        ".vscode-shared", ".templateengine",
+        ".snowflake", ".streamlit",
+        ".npm",
+        ".bash_sessions",
+    ]
+
+    /// Hidden top-level entries we recognise as developer-relevant.
+    public static let knownDotfiles: Set<String> = [
+        ".claude", ".claude-flow", ".claude.json", ".claude.json.backup",
+        ".cursor", ".codex", ".copilot", ".continue", ".codeium", ".codebuddy",
+        ".augment", ".gemini", ".iflow", ".qwen", ".openhands", ".cagent",
+        ".mcpjam", ".otk", ".trae", ".trae-cn", ".qoder", ".vibe",
+        ".factory", ".pochi", ".commandcode", ".openclaw", ".agents",
+        ".neovate", ".junie", ".kilocode", ".kiro", ".kode", ".roo",
+        ".rprodlx", ".zencoder",
+        ".vscode", ".oh-my-zsh",
+        ".dotnet", ".nuget", ".nvm", ".npm-global", ".rustup", ".swiftpm",
+        ".gem", ".docker",
+        ".aws", ".azure", ".gcloud", ".kube",
+        ".zshrc", ".bashrc", ".zprofile", ".bash_profile",
+        ".gitconfig", ".gitignore_global", ".npmrc", ".yarnrc",
+        ".ssh", ".gnupg",
+        ".config", ".rest-client", ".servicehub", ".office-addin-dev-certs",
+    ]
+
+    /// Pattern-based dotfile excludes (e.g. `.zcompdump-*`).
+    public static let dotfileBlockPrefixes: [String] = [
+        ".zcompdump",
+    ]
+
+    /// Top-level scan: visible non-skipped non-junk entries plus dev-relevant dotfiles.
+    /// Folders whose ≥3 immediate children look like project roots are expanded one level.
     public static func scanCandidates(
         homeURL: URL = URL(fileURLWithPath: NSHomeDirectory(), isDirectory: true),
         fileManager: FileManager = .default
     ) throws -> [CandidateItem] {
-        let children = try fileManager.contentsOfDirectory(
+        var result: [CandidateItem] = []
+
+        let visible = try fileManager.contentsOfDirectory(
             at: homeURL,
-            includingPropertiesForKeys: [
-                .isRegularFileKey,
-                .isDirectoryKey,
-                .isSymbolicLinkKey,
-                .fileSizeKey,
-                .totalFileAllocatedSizeKey,
-                .contentModificationDateKey,
-            ],
+            includingPropertiesForKeys: candidateResourceKeys,
             options: [.skipsHiddenFiles]
         )
 
-        var result: [CandidateItem] = []
-        result.reserveCapacity(children.count)
-
-        for url in children {
+        for url in visible {
             let name = url.lastPathComponent
             guard !shouldSkipTopLevelCandidate(name: name) else { continue }
             guard !isJunkFileName(name) else { continue }
 
-            let values = try url.resourceValues(forKeys: [
-                .isRegularFileKey,
-                .isDirectoryKey,
-                .isSymbolicLinkKey,
-                .fileSizeKey,
-                .totalFileAllocatedSizeKey,
-                .contentModificationDateKey,
-            ])
-
+            let values = try url.resourceValues(forKeys: candidateResourceKeySet)
             let isDir = values.isDirectory == true
             let isSymlink = values.isSymbolicLink == true
-            let mod = values.contentModificationDate
 
-            let sizeBytes: Int64
-            if isDir {
-                sizeBytes = try shallowDirectoryAllocatedBytes(url, fileManager: fileManager)
-            } else {
-                sizeBytes = allocatedBytes(from: values)
+            if isDir, !isSymlink, let expanded = try? maybeExpandParent(url: url, fileManager: fileManager) {
+                result.append(contentsOf: expanded)
+                continue
             }
 
-            result.append(
-                CandidateItem(
-                    url: url,
-                    name: name,
-                    isDirectory: isDir,
-                    isSymlink: isSymlink,
-                    sizeBytes: sizeBytes,
-                    modificationDate: mod
-                )
+            let stack = (isDir && !isSymlink) ? detectStack(at: url, fileManager: fileManager) : nil
+            let category: CandidateCategory
+            if !isDir {
+                category = .looseFile
+            } else if stack != nil {
+                category = .codeProject
+            } else {
+                category = .personalData
+            }
+
+            let item = try makeCandidate(
+                url: url,
+                name: name,
+                values: values,
+                category: category,
+                stack: stack,
+                fileManager: fileManager
             )
+            result.append(item)
         }
 
-        result.sort { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+        // Dotfile pass — explicit, since `.skipsHiddenFiles` filtered them out above.
+        let hiddenChildren = try fileManager.contentsOfDirectory(
+            at: homeURL,
+            includingPropertiesForKeys: candidateResourceKeys,
+            options: []
+        )
+        for url in hiddenChildren {
+            let name = url.lastPathComponent
+            guard name.hasPrefix("."), !isJunkFileName(name) else { continue }
+            let lower = name.lowercased()
+            if dotfileBlocklist.contains(lower) { continue }
+            if dotfileBlockPrefixes.contains(where: { lower.hasPrefix($0) }) { continue }
+
+            let values = try url.resourceValues(forKeys: candidateResourceKeySet)
+            let item = try makeCandidate(
+                url: url,
+                name: name,
+                values: values,
+                category: .devConfig,
+                stack: nil,
+                fileManager: fileManager
+            )
+            result.append(item)
+        }
+
+        result.sort { lhs, rhs in
+            if lhs.category != rhs.category {
+                return categoryOrder(lhs.category) < categoryOrder(rhs.category)
+            }
+            return lhs.name.localizedCaseInsensitiveCompare(rhs.name) == .orderedAscending
+        }
         return result
     }
 
@@ -106,36 +161,6 @@ public enum HomeScanner: Sendable {
         }
     }
 
-    /// Walk selected roots for HTML / export (depth + entry caps).
-    public static func buildTree(
-        forSelectedURLs roots: [URL],
-        limits: TreeWalkLimits = .default,
-        fileManager: FileManager = .default
-    ) throws -> TreeWalkResult {
-        var visited = 0
-        var truncated = false
-        var rootNodes: [FileTreeNode] = []
-
-        for root in roots.sorted(by: { $0.path < $1.path }) {
-            if visited >= limits.maxEntries {
-                truncated = true
-                break
-            }
-            let (node, trunc) = try buildNode(
-                url: root,
-                depth: 0,
-                limits: limits,
-                visited: &visited,
-                symlinkVisited: [],
-                fileManager: fileManager
-            )
-            truncated = truncated || trunc
-            rootNodes.append(node)
-        }
-
-        return TreeWalkResult(rootNodes: rootNodes, truncated: truncated, entriesVisited: visited)
-    }
-
     /// Per-root folder rollups for HTML: depth-1 / depth-2 aggregates and loose (root-level) files.
     public static func buildFolderRollup(
         forSelectedURLs roots: [URL],
@@ -165,9 +190,7 @@ public enum HomeScanner: Sendable {
 
             if !isDir.boolValue {
                 let values = try canonical.resourceValues(forKeys: [
-                    .isRegularFileKey,
-                    .totalFileAllocatedSizeKey,
-                    .fileSizeKey,
+                    .isRegularFileKey, .totalFileAllocatedSizeKey, .fileSizeKey,
                 ])
                 if values.isRegularFile == true {
                     let b = allocatedBytes(from: values)
@@ -190,10 +213,7 @@ public enum HomeScanner: Sendable {
             guard let enumerator = fileManager.enumerator(
                 at: canonical,
                 includingPropertiesForKeys: [
-                    .isRegularFileKey,
-                    .isDirectoryKey,
-                    .totalFileAllocatedSizeKey,
-                    .fileSizeKey,
+                    .isRegularFileKey, .isDirectoryKey, .totalFileAllocatedSizeKey, .fileSizeKey,
                 ],
                 options: [.skipsHiddenFiles],
                 errorHandler: { _, _ in true }
@@ -215,10 +235,7 @@ public enum HomeScanner: Sendable {
                 if isJunkFileName(name) { continue }
 
                 let v = try url.resourceValues(forKeys: [
-                    .isRegularFileKey,
-                    .isDirectoryKey,
-                    .totalFileAllocatedSizeKey,
-                    .fileSizeKey,
+                    .isRegularFileKey, .isDirectoryKey, .totalFileAllocatedSizeKey, .fileSizeKey,
                 ])
                 if v.isDirectory == true { continue }
                 if v.isRegularFile != true { continue }
@@ -237,7 +254,6 @@ public enum HomeScanner: Sendable {
                 } else {
                     let cur1 = depth1Map[first] ?? (0, 0)
                     depth1Map[first] = (cur1.bytes + bytes, cur1.count + 1)
-
                     if parts.count >= 3 {
                         let label2 = "\(parts[0])/\(parts[1])"
                         let cur2 = depth2Map[label2] ?? (0, 0)
@@ -260,7 +276,130 @@ public enum HomeScanner: Sendable {
         return FolderRollupResult(perRoot: perRoot)
     }
 
+    /// Returns the detected stack if the URL is a project root, else nil.
+    public static func detectStack(at url: URL, fileManager: FileManager = .default) -> CodeStack? {
+        let path = url.path
+        func has(_ relative: String) -> Bool {
+            fileManager.fileExists(atPath: "\(path)/\(relative)")
+        }
+        if has("Package.swift") { return .swift }
+        if has("Cargo.toml") { return .rust }
+        if has("go.mod") { return .go }
+        if has("pyproject.toml") || has("setup.py") || has("requirements.txt") || has("Pipfile") { return .python }
+        if has("package.json") { return .node }
+        if has("pom.xml") || has("build.gradle") || has("build.gradle.kts") { return .java }
+        if has("Gemfile") { return .ruby }
+        if has("composer.json") { return .php }
+        if let contents = try? fileManager.contentsOfDirectory(atPath: path) {
+            for entry in contents {
+                if entry.hasSuffix(".csproj") || entry.hasSuffix(".sln") || entry.hasSuffix(".fsproj") {
+                    return .dotnet
+                }
+            }
+        }
+        if has(".git") { return .generic }
+        return nil
+    }
+
     // MARK: - Private
+
+    private static let candidateResourceKeys: [URLResourceKey] = [
+        .isRegularFileKey,
+        .isDirectoryKey,
+        .isSymbolicLinkKey,
+        .fileSizeKey,
+        .totalFileAllocatedSizeKey,
+        .contentModificationDateKey,
+    ]
+
+    private static let candidateResourceKeySet: Set<URLResourceKey> = Set(candidateResourceKeys)
+
+    /// Expand a parent into per-project (and per-non-project) rows when ≥3 children look like project roots.
+    /// Returns nil when no expansion should happen.
+    private static func maybeExpandParent(url: URL, fileManager: FileManager) throws -> [CandidateItem]? {
+        if detectStack(at: url, fileManager: fileManager) != nil { return nil }
+
+        let children = try fileManager.contentsOfDirectory(
+            at: url,
+            includingPropertiesForKeys: candidateResourceKeys,
+            options: [.skipsHiddenFiles]
+        )
+        var inspected: [(url: URL, isDir: Bool, isSymlink: Bool, stack: CodeStack?)] = []
+        var projectChildCount = 0
+        for child in children {
+            let n = child.lastPathComponent
+            if isJunkFileName(n) { continue }
+            let v = try child.resourceValues(forKeys: candidateResourceKeySet)
+            let isDir = v.isDirectory == true
+            let isSymlink = v.isSymbolicLink == true
+            let stack = (isDir && !isSymlink) ? detectStack(at: child, fileManager: fileManager) : nil
+            if stack != nil { projectChildCount += 1 }
+            inspected.append((child, isDir, isSymlink, stack))
+        }
+
+        guard projectChildCount >= 3 else { return nil }
+
+        var out: [CandidateItem] = []
+        for child in inspected {
+            let n = child.url.lastPathComponent
+            let values = try child.url.resourceValues(forKeys: candidateResourceKeySet)
+            let category: CandidateCategory
+            if !child.isDir {
+                category = .looseFile
+            } else if child.stack != nil {
+                category = .codeProject
+            } else {
+                category = .personalData
+            }
+            let item = try makeCandidate(
+                url: child.url,
+                name: n,
+                values: values,
+                category: category,
+                stack: child.stack,
+                fileManager: fileManager
+            )
+            out.append(item)
+        }
+        return out
+    }
+
+    private static func makeCandidate(
+        url: URL,
+        name: String,
+        values: URLResourceValues,
+        category: CandidateCategory,
+        stack: CodeStack?,
+        fileManager: FileManager
+    ) throws -> CandidateItem {
+        let isDir = values.isDirectory == true
+        let isSymlink = values.isSymbolicLink == true
+        let sizeBytes: Int64
+        if isDir, !isSymlink {
+            sizeBytes = (try? shallowDirectoryAllocatedBytes(url, fileManager: fileManager)) ?? 0
+        } else {
+            sizeBytes = allocatedBytes(from: values)
+        }
+        return CandidateItem(
+            url: url,
+            name: name,
+            isDirectory: isDir,
+            isSymlink: isSymlink,
+            sizeBytes: sizeBytes,
+            modificationDate: values.contentModificationDate,
+            category: category,
+            stack: stack
+        )
+    }
+
+    private static func categoryOrder(_ c: CandidateCategory) -> Int {
+        switch c {
+        case .codeProject: return 0
+        case .personalData: return 1
+        case .devConfig: return 2
+        case .looseFile: return 3
+        }
+    }
 
     private static func shouldSkipTopLevelCandidate(name: String) -> Bool {
         skippedHomeChildNames.contains(name.lowercased())
@@ -276,15 +415,11 @@ public enum HomeScanner: Sendable {
         return 0
     }
 
-    /// One-level sum: allocated bytes of each immediate child only (no recursion into subdirectories).
     private static func shallowDirectoryAllocatedBytes(_ dir: URL, fileManager: FileManager) throws -> Int64 {
         let items = try fileManager.contentsOfDirectory(
             at: dir,
             includingPropertiesForKeys: [
-                .isRegularFileKey,
-                .isDirectoryKey,
-                .totalFileAllocatedSizeKey,
-                .fileSizeKey,
+                .isRegularFileKey, .isDirectoryKey, .totalFileAllocatedSizeKey, .fileSizeKey,
             ],
             options: [.skipsHiddenFiles]
         )
@@ -293,10 +428,7 @@ public enum HomeScanner: Sendable {
             let name = url.lastPathComponent
             if isJunkFileName(name) { continue }
             let v = try url.resourceValues(forKeys: [
-                .isRegularFileKey,
-                .isDirectoryKey,
-                .totalFileAllocatedSizeKey,
-                .fileSizeKey,
+                .isRegularFileKey, .isDirectoryKey, .totalFileAllocatedSizeKey, .fileSizeKey,
             ])
             sum += allocatedBytes(from: v)
         }
@@ -307,10 +439,7 @@ public enum HomeScanner: Sendable {
         guard let enumerator = fileManager.enumerator(
             at: root,
             includingPropertiesForKeys: [
-                .isRegularFileKey,
-                .isDirectoryKey,
-                .totalFileAllocatedSizeKey,
-                .fileSizeKey,
+                .isRegularFileKey, .isDirectoryKey, .totalFileAllocatedSizeKey, .fileSizeKey,
             ],
             options: [.skipsHiddenFiles],
             errorHandler: { _, _ in true }
@@ -321,98 +450,12 @@ public enum HomeScanner: Sendable {
             let name = url.lastPathComponent
             if isJunkFileName(name) { continue }
             let v = try url.resourceValues(forKeys: [
-                .isRegularFileKey,
-                .isDirectoryKey,
-                .totalFileAllocatedSizeKey,
-                .fileSizeKey,
+                .isRegularFileKey, .isDirectoryKey, .totalFileAllocatedSizeKey, .fileSizeKey,
             ])
             if v.isDirectory == true { continue }
             total += allocatedBytes(from: v)
         }
         return total
-    }
-
-    private static func buildNode(
-        url: URL,
-        depth: Int,
-        limits: TreeWalkLimits,
-        visited: inout Int,
-        symlinkVisited: Set<String>,
-        fileManager: FileManager
-    ) throws -> (FileTreeNode, Bool) {
-        if visited >= limits.maxEntries {
-            visited += 1
-            let leaf = FileTreeNode(url: url, name: url.lastPathComponent, isDirectory: false, children: [])
-            return (leaf, true)
-        }
-
-        let name = url.lastPathComponent
-        let values = try url.resourceValues(forKeys: [
-            .isDirectoryKey,
-            .isSymbolicLinkKey,
-        ])
-
-        if values.isSymbolicLink == true {
-            let path = url.path
-            if symlinkVisited.contains(path) {
-                visited += 1
-                let leaf = FileTreeNode(
-                    url: url,
-                    name: "\(name) (symlink loop)",
-                    isDirectory: false,
-                    children: []
-                )
-                return (leaf, false)
-            }
-            var next = symlinkVisited
-            next.insert(path)
-            let dest = url.resolvingSymlinksInPath()
-            return try buildNode(
-                url: dest,
-                depth: depth,
-                limits: limits,
-                visited: &visited,
-                symlinkVisited: next,
-                fileManager: fileManager
-            )
-        }
-
-        let isDir = values.isDirectory == true
-        if !isDir || depth >= limits.maxDepth {
-            visited += 1
-            return (FileTreeNode(url: url, name: name, isDirectory: isDir, children: []), false)
-        }
-
-        let childURLs = try fileManager.contentsOfDirectory(
-            at: url,
-            includingPropertiesForKeys: [.isDirectoryKey],
-            options: [.skipsHiddenFiles]
-        )
-        .sorted { $0.lastPathComponent.localizedCaseInsensitiveCompare($1.lastPathComponent) == .orderedAscending }
-
-        var children: [FileTreeNode] = []
-        var truncated = false
-
-        for child in childURLs {
-            if isJunkFileName(child.lastPathComponent) { continue }
-            if visited >= limits.maxEntries {
-                truncated = true
-                break
-            }
-            let (node, t) = try buildNode(
-                url: child,
-                depth: depth + 1,
-                limits: limits,
-                visited: &visited,
-                symlinkVisited: symlinkVisited,
-                fileManager: fileManager
-            )
-            children.append(node)
-            truncated = truncated || t
-        }
-
-        visited += 1
-        return (FileTreeNode(url: url, name: name, isDirectory: true, children: children), truncated)
     }
 
     private static func rollupCanonicalRoot(_ url: URL, fileManager: FileManager) -> URL {

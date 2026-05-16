@@ -16,30 +16,48 @@ public enum MediaFolder: String, CaseIterable, Sendable {
     public var directoryName: String { rawValue }
 }
 
-public struct CandidateItem: Identifiable, Hashable, Sendable {
-    public let id: String
-    public let url: URL
-    public let name: String
-    public let isDirectory: Bool
-    public let isSymlink: Bool
-    public let sizeBytes: Int64
-    public let modificationDate: Date?
+public enum CandidateCategory: String, Sendable, CaseIterable {
+    case codeProject
+    case personalData
+    case devConfig
+    case looseFile
 
-    public init(
-        url: URL,
-        name: String,
-        isDirectory: Bool,
-        isSymlink: Bool,
-        sizeBytes: Int64,
-        modificationDate: Date?
-    ) {
-        self.url = url
-        self.name = name
-        self.isDirectory = isDirectory
-        self.isSymlink = isSymlink
-        self.sizeBytes = sizeBytes
-        self.modificationDate = modificationDate
-        self.id = url.path(percentEncoded: false)
+    public var displayLabel: String {
+        switch self {
+        case .codeProject: return "Project"
+        case .personalData: return "Personal"
+        case .devConfig: return "Config"
+        case .looseFile: return "File"
+        }
+    }
+
+    /// Used by the HTML tag colour and by the macOS UI to badge rows.
+    public var tagClass: String {
+        switch self {
+        case .codeProject: return "tag-project"
+        case .personalData: return "tag-personal"
+        case .devConfig: return "tag-config"
+        case .looseFile: return "tag-file"
+        }
+    }
+}
+
+public enum CodeStack: String, Sendable, CaseIterable {
+    case swift, node, python, rust, go, java, dotnet, ruby, php, generic
+
+    public var displayLabel: String {
+        switch self {
+        case .swift: return "Swift"
+        case .node: return "Node"
+        case .python: return "Python"
+        case .rust: return "Rust"
+        case .go: return "Go"
+        case .java: return "Java"
+        case .dotnet: return ".NET"
+        case .ruby: return "Ruby"
+        case .php: return "PHP"
+        case .generic: return "Git"
+        }
     }
 }
 
@@ -67,6 +85,39 @@ public struct UserContext: Sendable {
     }
 }
 
+public struct CandidateItem: Identifiable, Hashable, Sendable {
+    public let id: String
+    public let url: URL
+    public let name: String
+    public let isDirectory: Bool
+    public let isSymlink: Bool
+    public let sizeBytes: Int64
+    public let modificationDate: Date?
+    public let category: CandidateCategory
+    public let stack: CodeStack?
+
+    public init(
+        url: URL,
+        name: String,
+        isDirectory: Bool,
+        isSymlink: Bool,
+        sizeBytes: Int64,
+        modificationDate: Date?,
+        category: CandidateCategory,
+        stack: CodeStack? = nil
+    ) {
+        self.url = url
+        self.name = name
+        self.isDirectory = isDirectory
+        self.isSymlink = isSymlink
+        self.sizeBytes = sizeBytes
+        self.modificationDate = modificationDate
+        self.category = category
+        self.stack = stack
+        self.id = url.path(percentEncoded: false)
+    }
+}
+
 public struct MediaFolderMeasurement: Sendable {
     public let folder: MediaFolder
     public let exists: Bool
@@ -89,34 +140,9 @@ public struct ScanSummary: Sendable {
     }
 }
 
-public struct TreeWalkLimits: Sendable {
-    public var maxDepth: Int
-    public var maxEntries: Int
-
-    public static let `default` = TreeWalkLimits(maxDepth: 12, maxEntries: 10_000)
-
-    public init(maxDepth: Int, maxEntries: Int) {
-        self.maxDepth = maxDepth
-        self.maxEntries = maxEntries
-    }
-}
-
-public struct TreeWalkResult: Sendable {
-    public let rootNodes: [FileTreeNode]
-    public let truncated: Bool
-    public let entriesVisited: Int
-
-    public init(rootNodes: [FileTreeNode], truncated: Bool, entriesVisited: Int) {
-        self.rootNodes = rootNodes
-        self.truncated = truncated
-        self.entriesVisited = entriesVisited
-    }
-}
-
 /// One rollup bucket under a scan root (e.g. `Codingapps` or `Codingapps/PedalQuest`).
 public struct FolderRollupBucket: Identifiable, Sendable {
     public let id: String
-    /// Display label (first segment, or `first/second`).
     public let label: String
     public let totalBytes: Int64
     public let fileCount: Int
@@ -129,13 +155,11 @@ public struct FolderRollupBucket: Identifiable, Sendable {
     }
 }
 
-/// Rollup for one selected root URL.
 public struct FolderRollupPerRoot: Sendable {
     public let rootURL: URL
     public let rootDisplayName: String
     public let depth1: [FolderRollupBucket]
     public let depth2: [FolderRollupBucket]
-    /// Files whose path under root has no directory component (loose at root).
     public let looseFiles: [FolderRollupBucket]
 
     public init(
@@ -161,18 +185,35 @@ public struct FolderRollupResult: Sendable {
     }
 }
 
-public struct FileTreeNode: Identifiable, Sendable {
-    public let id: String
-    public let url: URL
-    public let name: String
-    public let isDirectory: Bool
-    public let children: [FileTreeNode]
+public struct HomebrewInfo: Sendable {
+    public let brewPath: String
+    public let brewfile: String
+    public let formulaCount: Int
+    public let caskCount: Int
+    public let tapCount: Int
+    public let masCount: Int
 
-    public init(url: URL, name: String, isDirectory: Bool, children: [FileTreeNode]) {
-        self.url = url
-        self.name = name
-        self.isDirectory = isDirectory
-        self.children = children
-        self.id = url.path(percentEncoded: false)
+    public init(
+        brewPath: String,
+        brewfile: String,
+        formulaCount: Int,
+        caskCount: Int,
+        tapCount: Int,
+        masCount: Int
+    ) {
+        self.brewPath = brewPath
+        self.brewfile = brewfile
+        self.formulaCount = formulaCount
+        self.caskCount = caskCount
+        self.tapCount = tapCount
+        self.masCount = masCount
+    }
+
+    public var isEmpty: Bool {
+        formulaCount == 0 && caskCount == 0 && tapCount == 0 && masCount == 0
+    }
+
+    public var totalItems: Int {
+        formulaCount + caskCount + tapCount + masCount
     }
 }
