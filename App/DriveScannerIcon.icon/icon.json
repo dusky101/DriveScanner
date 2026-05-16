@@ -1,0 +1,41 @@
+{
+  "fill" : {
+    "solid" : "display-p3:0.00000,0.21664,0.96783,1.00000"
+  },
+  "groups" : [
+    {
+      "layers" : [
+        {
+          "glass" : false,
+          "image-name" : "DriveScannerIcon.png",
+          "name" : "DriveScannerIcon",
+          "position-specializations" : [
+            {
+              "idiom" : "macOS",
+              "value" : {
+                "scale" : 0.8,
+                "translation-in-points" : [
+                  -1.1999999999999318,
+                  -7.600000000000023
+                ]
+              }
+            }
+          ]
+        }
+      ],
+      "shadow" : {
+        "kind" : "neutral",
+        "opacity" : 0.5
+      },
+      "translucency" : {
+        "enabled" : true,
+        "value" : 0.5
+      }
+    }
+  ],
+  "supported-platforms" : {
+    "squares" : [
+      "macOS"
+    ]
+  }
+}
