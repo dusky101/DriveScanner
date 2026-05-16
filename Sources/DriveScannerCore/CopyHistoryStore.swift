@@ -71,6 +71,7 @@ public enum CopyHistoryStore: Sendable {
     }
 
     /// Returns a new history with `items` added (paths are deduplicated — re-copies update the timestamp).
+    /// Uses `item.id` (which is `url.path(percentEncoded: false)`) so lookups by the same id match exactly.
     public static func append(
         items: [CandidateItem],
         bundleName: String,
@@ -78,12 +79,9 @@ public enum CopyHistoryStore: Sendable {
         now: Date = Date()
     ) -> CopiedHistory {
         var entries = history.entries
-        let existingPaths = Set(entries.map(\.path))
         for item in items {
-            let path = item.url.path
-            if existingPaths.contains(path) {
-                entries.removeAll { $0.path == path }
-            }
+            let path = item.id
+            entries.removeAll { $0.path == path }
             entries.append(CopiedEntry(
                 path: path,
                 sizeBytes: item.sizeBytes,

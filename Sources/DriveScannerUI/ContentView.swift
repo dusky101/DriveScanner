@@ -462,6 +462,13 @@ public struct ContentView: View {
             try? CopyHistoryStore.save(updated)
             copyHistory = updated
 
+            // Deselect what we just bundled so the rows visibly switch to the
+            // "copied" state (dim + Copied pill + disabled checkbox) and the
+            // user has a clean slate for any further selections.
+            selection.subtract(selectedItems.map(\.id))
+
+            statusMessage += " · \(selectedItems.count) marked as copied"
+
             if isTemp {
                 let tempRoot = workingDir.deletingLastPathComponent()
                 try? fm.removeItem(at: tempRoot)
