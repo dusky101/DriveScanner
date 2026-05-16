@@ -1,0 +1,168 @@
+client:
+  name: basic
+  file-system: device-agnostic
+tools: {}
+targets:
+  "DriveScanner-arm64-apple-macosx-debug.exe": ["<DriveScanner-arm64-apple-macosx-debug.exe>"]
+  "DriveScanner-arm64-apple-macosx-debug.module": ["<DriveScanner-arm64-apple-macosx-debug.module>"]
+  "DriveScannerCore-arm64-apple-macosx-debug.module": ["<DriveScannerCore-arm64-apple-macosx-debug.module>"]
+  "DriveScannerPackageTests-arm64-apple-macosx-debug.module": ["<DriveScannerPackageTests-arm64-apple-macosx-debug.module>"]
+  "DriveScannerPackageTests-arm64-apple-macosx-debug.test": ["<DriveScannerPackageTests-arm64-apple-macosx-debug.test>"]
+  "DriveScannerTests-arm64-apple-macosx-debug.module": ["<DriveScannerTests-arm64-apple-macosx-debug.module>"]
+  "PackageStructure": ["<PackageStructure>"]
+  "main": ["<DriveScanner-arm64-apple-macosx-debug.exe>","<DriveScanner-arm64-apple-macosx-debug.module>","<DriveScannerCore-arm64-apple-macosx-debug.module>"]
+  "test": ["<DriveScanner-arm64-apple-macosx-debug.exe>","<DriveScanner-arm64-apple-macosx-debug.module>","<DriveScannerCore-arm64-apple-macosx-debug.module>","<DriveScannerPackageTests-arm64-apple-macosx-debug.test>","<DriveScannerTests-arm64-apple-macosx-debug.module>"]
+default: "main"
+nodes:
+  "/Users/marcoliff/Codingapps/DriveScanner/Sources/DriveScanner/":
+    is-directory-structure: true
+    content-exclusion-patterns: [".git",".build"]
+  "/Users/marcoliff/Codingapps/DriveScanner/Sources/DriveScannerCore/":
+    is-directory-structure: true
+    content-exclusion-patterns: [".git",".build"]
+  "/Users/marcoliff/Codingapps/DriveScanner/Tests/DriveScannerTests/":
+    is-directory-structure: true
+    content-exclusion-patterns: [".git",".build"]
+  "/Users/marcoliff/Codingapps/DriveScanner/.build/arm64-apple-macosx/debug/DriveScanner":
+    is-mutated: true
+commands:
+  "/Users/marcoliff/Codingapps/DriveScanner/.build/arm64-apple-macosx/debug/DriveScanner-entitlement.plist":
+    tool: write-auxiliary-file
+    inputs: ["<entitlement-plist>","<com.apple.security.get-task-allow>"]
+    outputs: ["/Users/marcoliff/Codingapps/DriveScanner/.build/arm64-apple-macosx/debug/DriveScanner-entitlement.plist"]
+    description: "Write auxiliary file /Users/marcoliff/Codingapps/DriveScanner/.build/arm64-apple-macosx/debug/DriveScanner-entitlement.plist"
+
+  "/Users/marcoliff/Codingapps/DriveScanner/.build/arm64-apple-macosx/debug/DriveScanner.build/sources":
+    tool: write-auxiliary-file
+    inputs: ["<sources-file-list>","/Users/marcoliff/Codingapps/DriveScanner/Sources/DriveScanner/ContentView.swift","/Users/marcoliff/Codingapps/DriveScanner/Sources/DriveScanner/MigrationAssistantApp.swift"]
+    outputs: ["/Users/marcoliff/Codingapps/DriveScanner/.build/arm64-apple-macosx/debug/DriveScanner.build/sources"]
+    description: "Write auxiliary file /Users/marcoliff/Codingapps/DriveScanner/.build/arm64-apple-macosx/debug/DriveScanner.build/sources"
+
+  "/Users/marcoliff/Codingapps/DriveScanner/.build/arm64-apple-macosx/debug/DriveScanner.product/Objects.LinkFileList":
+    tool: write-auxiliary-file
+    inputs: ["<link-file-list>","/Users/marcoliff/Codingapps/DriveScanner/.build/arm64-apple-macosx/debug/DriveScanner.build/ContentView.swift.o","/Users/marcoliff/Codingapps/DriveScanner/.build/arm64-apple-macosx/debug/DriveScanner.build/MigrationAssistantApp.swift.o","/Users/marcoliff/Codingapps/DriveScanner/.build/arm64-apple-macosx/debug/DriveScannerCore.build/ExportService.swift.o","/Users/marcoliff/Codingapps/DriveScanner/.build/arm64-apple-macosx/debug/DriveScannerCore.build/HTMLReportBuilder.swift.o","/Users/marcoliff/Codingapps/DriveScanner/.build/arm64-apple-macosx/debug/DriveScannerCore.build/HomeScanner.swift.o","/Users/marcoliff/Codingapps/DriveScanner/.build/arm64-apple-macosx/debug/DriveScannerCore.build/Models.swift.o"]
+    outputs: ["/Users/marcoliff/Codingapps/DriveScanner/.build/arm64-apple-macosx/debug/DriveScanner.product/Objects.LinkFileList"]
+    description: "Write auxiliary file /Users/marcoliff/Codingapps/DriveScanner/.build/arm64-apple-macosx/debug/DriveScanner.product/Objects.LinkFileList"
+
+  "/Users/marcoliff/Codingapps/DriveScanner/.build/arm64-apple-macosx/debug/DriveScannerCore.build/sources":
+    tool: write-auxiliary-file
+    inputs: ["<sources-file-list>","/Users/marcoliff/Codingapps/DriveScanner/Sources/DriveScannerCore/ExportService.swift","/Users/marcoliff/Codingapps/DriveScanner/Sources/DriveScannerCore/HTMLReportBuilder.swift","/Users/marcoliff/Codingapps/DriveScanner/Sources/DriveScannerCore/HomeScanner.swift","/Users/marcoliff/Codingapps/DriveScanner/Sources/DriveScannerCore/Models.swift"]
+    outputs: ["/Users/marcoliff/Codingapps/DriveScanner/.build/arm64-apple-macosx/debug/DriveScannerCore.build/sources"]
+    description: "Write auxiliary file /Users/marcoliff/Codingapps/DriveScanner/.build/arm64-apple-macosx/debug/DriveScannerCore.build/sources"
+
+  "/Users/marcoliff/Codingapps/DriveScanner/.build/arm64-apple-macosx/debug/DriveScannerPackageTests.build/sources":
+    tool: write-auxiliary-file
+    inputs: ["<sources-file-list>","/Users/marcoliff/Codingapps/DriveScanner/.build/arm64-apple-macosx/debug/DriveScannerPackageTests.derived/runner.swift"]
+    outputs: ["/Users/marcoliff/Codingapps/DriveScanner/.build/arm64-apple-macosx/debug/DriveScannerPackageTests.build/sources"]
+    description: "Write auxiliary file /Users/marcoliff/Codingapps/DriveScanner/.build/arm64-apple-macosx/debug/DriveScannerPackageTests.build/sources"
+
+  "/Users/marcoliff/Codingapps/DriveScanner/.build/arm64-apple-macosx/debug/DriveScannerPackageTests.derived/runner.swift":
+    tool: test-entry-point-tool
+    inputs: []
+    outputs: ["/Users/marcoliff/Codingapps/DriveScanner/.build/arm64-apple-macosx/debug/DriveScannerPackageTests.derived/runner.swift"]
+
+  "/Users/marcoliff/Codingapps/DriveScanner/.build/arm64-apple-macosx/debug/DriveScannerPackageTests.product/Objects.LinkFileList":
+    tool: write-auxiliary-file
+    inputs: ["<link-file-list>","/Users/marcoliff/Codingapps/DriveScanner/.build/arm64-apple-macosx/debug/DriveScannerCore.build/ExportService.swift.o","/Users/marcoliff/Codingapps/DriveScanner/.build/arm64-apple-macosx/debug/DriveScannerCore.build/HTMLReportBuilder.swift.o","/Users/marcoliff/Codingapps/DriveScanner/.build/arm64-apple-macosx/debug/DriveScannerCore.build/HomeScanner.swift.o","/Users/marcoliff/Codingapps/DriveScanner/.build/arm64-apple-macosx/debug/DriveScannerCore.build/Models.swift.o","/Users/marcoliff/Codingapps/DriveScanner/.build/arm64-apple-macosx/debug/DriveScannerPackageTests.build/runner.swift.o","/Users/marcoliff/Codingapps/DriveScanner/.build/arm64-apple-macosx/debug/DriveScannerTests.build/HomeScannerTests.swift.o"]
+    outputs: ["/Users/marcoliff/Codingapps/DriveScanner/.build/arm64-apple-macosx/debug/DriveScannerPackageTests.product/Objects.LinkFileList"]
+    description: "Write auxiliary file /Users/marcoliff/Codingapps/DriveScanner/.build/arm64-apple-macosx/debug/DriveScannerPackageTests.product/Objects.LinkFileList"
+
+  "/Users/marcoliff/Codingapps/DriveScanner/.build/arm64-apple-macosx/debug/DriveScannerTests.build/sources":
+    tool: write-auxiliary-file
+    inputs: ["<sources-file-list>","/Users/marcoliff/Codingapps/DriveScanner/Tests/DriveScannerTests/HomeScannerTests.swift"]
+    outputs: ["/Users/marcoliff/Codingapps/DriveScanner/.build/arm64-apple-macosx/debug/DriveScannerTests.build/sources"]
+    description: "Write auxiliary file /Users/marcoliff/Codingapps/DriveScanner/.build/arm64-apple-macosx/debug/DriveScannerTests.build/sources"
+
+  "/Users/marcoliff/Codingapps/DriveScanner/.build/arm64-apple-macosx/debug/swift-version--58304C5D6DBC2206.txt":
+    tool: write-auxiliary-file
+    inputs: ["<swift-get-version>","/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc"]
+    outputs: ["/Users/marcoliff/Codingapps/DriveScanner/.build/arm64-apple-macosx/debug/swift-version--58304C5D6DBC2206.txt"]
+    always-out-of-date: "true"
+    description: "Write auxiliary file /Users/marcoliff/Codingapps/DriveScanner/.build/arm64-apple-macosx/debug/swift-version--58304C5D6DBC2206.txt"
+
+  "<DriveScanner-arm64-apple-macosx-debug.exe>":
+    tool: phony
+    inputs: ["<DriveScanner-arm64-apple-macosx-debug.exe-CodeSigning>"]
+    outputs: ["<DriveScanner-arm64-apple-macosx-debug.exe>"]
+
+  "<DriveScanner-arm64-apple-macosx-debug.module>":
+    tool: phony
+    inputs: ["/Users/marcoliff/Codingapps/DriveScanner/.build/arm64-apple-macosx/debug/DriveScanner.build/ContentView.swift.o","/Users/marcoliff/Codingapps/DriveScanner/.build/arm64-apple-macosx/debug/DriveScanner.build/MigrationAssistantApp.swift.o","/Users/marcoliff/Codingapps/DriveScanner/.build/arm64-apple-macosx/debug/Modules/DriveScanner.swiftmodule"]
+    outputs: ["<DriveScanner-arm64-apple-macosx-debug.module>"]
+
+  "<DriveScannerCore-arm64-apple-macosx-debug.module>":
+    tool: phony
+    inputs: ["/Users/marcoliff/Codingapps/DriveScanner/.build/arm64-apple-macosx/debug/DriveScannerCore.build/ExportService.swift.o","/Users/marcoliff/Codingapps/DriveScanner/.build/arm64-apple-macosx/debug/DriveScannerCore.build/HTMLReportBuilder.swift.o","/Users/marcoliff/Codingapps/DriveScanner/.build/arm64-apple-macosx/debug/DriveScannerCore.build/HomeScanner.swift.o","/Users/marcoliff/Codingapps/DriveScanner/.build/arm64-apple-macosx/debug/DriveScannerCore.build/Models.swift.o","/Users/marcoliff/Codingapps/DriveScanner/.build/arm64-apple-macosx/debug/Modules/DriveScannerCore.swiftmodule"]
+    outputs: ["<DriveScannerCore-arm64-apple-macosx-debug.module>"]
+
+  "<DriveScannerPackageTests-arm64-apple-macosx-debug.module>":
+    tool: phony
+    inputs: ["/Users/marcoliff/Codingapps/DriveScanner/.build/arm64-apple-macosx/debug/DriveScannerPackageTests.build/runner.swift.o","/Users/marcoliff/Codingapps/DriveScanner/.build/arm64-apple-macosx/debug/Modules/DriveScannerPackageTests.swiftmodule"]
+    outputs: ["<DriveScannerPackageTests-arm64-apple-macosx-debug.module>"]
+
+  "<DriveScannerPackageTests-arm64-apple-macosx-debug.test>":
+    tool: phony
+    inputs: ["/Users/marcoliff/Codingapps/DriveScanner/.build/arm64-apple-macosx/debug/DriveScannerPackageTests.xctest/Contents/MacOS/DriveScannerPackageTests"]
+    outputs: ["<DriveScannerPackageTests-arm64-apple-macosx-debug.test>"]
+
+  "<DriveScannerTests-arm64-apple-macosx-debug.module>":
+    tool: phony
+    inputs: ["/Users/marcoliff/Codingapps/DriveScanner/.build/arm64-apple-macosx/debug/DriveScannerTests.build/HomeScannerTests.swift.o","/Users/marcoliff/Codingapps/DriveScanner/.build/arm64-apple-macosx/debug/Modules/DriveScannerTests.swiftmodule"]
+    outputs: ["<DriveScannerTests-arm64-apple-macosx-debug.module>"]
+
+  "C.DriveScanner-arm64-apple-macosx-debug.exe":
+    tool: shell
+    inputs: ["/Users/marcoliff/Codingapps/DriveScanner/.build/arm64-apple-macosx/debug/DriveScanner.build/ContentView.swift.o","/Users/marcoliff/Codingapps/DriveScanner/.build/arm64-apple-macosx/debug/DriveScanner.build/MigrationAssistantApp.swift.o","/Users/marcoliff/Codingapps/DriveScanner/.build/arm64-apple-macosx/debug/DriveScannerCore.build/ExportService.swift.o","/Users/marcoliff/Codingapps/DriveScanner/.build/arm64-apple-macosx/debug/DriveScannerCore.build/HTMLReportBuilder.swift.o","/Users/marcoliff/Codingapps/DriveScanner/.build/arm64-apple-macosx/debug/DriveScannerCore.build/HomeScanner.swift.o","/Users/marcoliff/Codingapps/DriveScanner/.build/arm64-apple-macosx/debug/DriveScannerCore.build/Models.swift.o","/Users/marcoliff/Codingapps/DriveScanner/.build/arm64-apple-macosx/debug/DriveScanner.product/Objects.LinkFileList"]
+    outputs: ["/Users/marcoliff/Codingapps/DriveScanner/.build/arm64-apple-macosx/debug/DriveScanner"]
+    description: "Linking ./.build/arm64-apple-macosx/debug/DriveScanner"
+    args: ["/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc","-L","/Users/marcoliff/Codingapps/DriveScanner/.build/arm64-apple-macosx/debug","-o","/Users/marcoliff/Codingapps/DriveScanner/.build/arm64-apple-macosx/debug/DriveScanner","-module-name","DriveScanner","-Xlinker","-no_warn_duplicate_libraries","-emit-executable","-Xlinker","-alias","-Xlinker","_DriveScanner_main","-Xlinker","_main","-Xlinker","-rpath","-Xlinker","@loader_path","@/Users/marcoliff/Codingapps/DriveScanner/.build/arm64-apple-macosx/debug/DriveScanner.product/Objects.LinkFileList","-Xlinker","-rpath","-Xlinker","/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift-6.2/macosx","-target","arm64-apple-macosx15.0","-Xlinker","-add_ast_path","-Xlinker","/Users/marcoliff/Codingapps/DriveScanner/.build/arm64-apple-macosx/debug/Modules/DriveScanner.swiftmodule","-Xlinker","-add_ast_path","-Xlinker","/Users/marcoliff/Codingapps/DriveScanner/.build/arm64-apple-macosx/debug/Modules/DriveScannerCore.swiftmodule","-plugin-path","/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/host/plugins/testing","-sdk","/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk","-F","/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks","-I","/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib","-L","/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib","-g"]
+
+  "C.DriveScanner-arm64-apple-macosx-debug.exe-entitlements":
+    tool: shell
+    inputs: ["/Users/marcoliff/Codingapps/DriveScanner/.build/arm64-apple-macosx/debug/DriveScanner","/Users/marcoliff/Codingapps/DriveScanner/.build/arm64-apple-macosx/debug/DriveScanner-entitlement.plist"]
+    outputs: ["<DriveScanner-arm64-apple-macosx-debug.exe-CodeSigning>"]
+    description: "Applying debug entitlements to ./.build/arm64-apple-macosx/debug/DriveScanner"
+    args: ["codesign","--force","--sign","-","--entitlements","/Users/marcoliff/Codingapps/DriveScanner/.build/arm64-apple-macosx/debug/DriveScanner-entitlement.plist","/Users/marcoliff/Codingapps/DriveScanner/.build/arm64-apple-macosx/debug/DriveScanner"]
+
+  "C.DriveScanner-arm64-apple-macosx-debug.module":
+    tool: shell
+    inputs: ["/Users/marcoliff/Codingapps/DriveScanner/Sources/DriveScanner/ContentView.swift","/Users/marcoliff/Codingapps/DriveScanner/Sources/DriveScanner/MigrationAssistantApp.swift","/Users/marcoliff/Codingapps/DriveScanner/.build/arm64-apple-macosx/debug/swift-version--58304C5D6DBC2206.txt","/Users/marcoliff/Codingapps/DriveScanner/.build/arm64-apple-macosx/debug/Modules/DriveScannerCore.swiftmodule","/Users/marcoliff/Codingapps/DriveScanner/.build/arm64-apple-macosx/debug/DriveScanner.build/sources"]
+    outputs: ["/Users/marcoliff/Codingapps/DriveScanner/.build/arm64-apple-macosx/debug/DriveScanner.build/ContentView.swift.o","/Users/marcoliff/Codingapps/DriveScanner/.build/arm64-apple-macosx/debug/DriveScanner.build/MigrationAssistantApp.swift.o","/Users/marcoliff/Codingapps/DriveScanner/.build/arm64-apple-macosx/debug/Modules/DriveScanner.swiftmodule"]
+    description: "Compiling Swift Module 'DriveScanner' (2 sources)"
+    args: ["/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc","-module-name","DriveScanner","-emit-dependencies","-emit-module","-emit-module-path","/Users/marcoliff/Codingapps/DriveScanner/.build/arm64-apple-macosx/debug/Modules/DriveScanner.swiftmodule","-output-file-map","/Users/marcoliff/Codingapps/DriveScanner/.build/arm64-apple-macosx/debug/DriveScanner.build/output-file-map.json","-incremental","-c","@/Users/marcoliff/Codingapps/DriveScanner/.build/arm64-apple-macosx/debug/DriveScanner.build/sources","-I","/Users/marcoliff/Codingapps/DriveScanner/.build/arm64-apple-macosx/debug/Modules","-target","arm64-apple-macosx15.0","-incremental","-enable-batch-mode","-serialize-diagnostics","-index-store-path","/Users/marcoliff/Codingapps/DriveScanner/.build/arm64-apple-macosx/debug/index/store","-Onone","-enable-testing","-j14","-DSWIFT_PACKAGE","-DDEBUG","-DSWIFT_MODULE_RESOURCE_BUNDLE_UNAVAILABLE","-module-cache-path","/Users/marcoliff/Codingapps/DriveScanner/.build/arm64-apple-macosx/debug/ModuleCache","-parseable-output","-Xfrontend","-entry-point-function-name","-Xfrontend","DriveScanner_main","-swift-version","6","-plugin-path","/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/host/plugins/testing","-sdk","/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk","-F","/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks","-I","/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib","-L","/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib","-g","-Xcc","-isysroot","-Xcc","/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk","-Xcc","-F","-Xcc","/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks","-Xcc","-fPIC","-Xcc","-g","-package-name","drivescanner"]
+
+  "C.DriveScannerCore-arm64-apple-macosx-debug.module":
+    tool: shell
+    inputs: ["/Users/marcoliff/Codingapps/DriveScanner/Sources/DriveScannerCore/ExportService.swift","/Users/marcoliff/Codingapps/DriveScanner/Sources/DriveScannerCore/HTMLReportBuilder.swift","/Users/marcoliff/Codingapps/DriveScanner/Sources/DriveScannerCore/HomeScanner.swift","/Users/marcoliff/Codingapps/DriveScanner/Sources/DriveScannerCore/Models.swift","/Users/marcoliff/Codingapps/DriveScanner/.build/arm64-apple-macosx/debug/swift-version--58304C5D6DBC2206.txt","/Users/marcoliff/Codingapps/DriveScanner/.build/arm64-apple-macosx/debug/DriveScannerCore.build/sources"]
+    outputs: ["/Users/marcoliff/Codingapps/DriveScanner/.build/arm64-apple-macosx/debug/DriveScannerCore.build/ExportService.swift.o","/Users/marcoliff/Codingapps/DriveScanner/.build/arm64-apple-macosx/debug/DriveScannerCore.build/HTMLReportBuilder.swift.o","/Users/marcoliff/Codingapps/DriveScanner/.build/arm64-apple-macosx/debug/DriveScannerCore.build/HomeScanner.swift.o","/Users/marcoliff/Codingapps/DriveScanner/.build/arm64-apple-macosx/debug/DriveScannerCore.build/Models.swift.o","/Users/marcoliff/Codingapps/DriveScanner/.build/arm64-apple-macosx/debug/Modules/DriveScannerCore.swiftmodule"]
+    description: "Compiling Swift Module 'DriveScannerCore' (4 sources)"
+    args: ["/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc","-module-name","DriveScannerCore","-emit-dependencies","-emit-module","-emit-module-path","/Users/marcoliff/Codingapps/DriveScanner/.build/arm64-apple-macosx/debug/Modules/DriveScannerCore.swiftmodule","-output-file-map","/Users/marcoliff/Codingapps/DriveScanner/.build/arm64-apple-macosx/debug/DriveScannerCore.build/output-file-map.json","-parse-as-library","-incremental","-c","@/Users/marcoliff/Codingapps/DriveScanner/.build/arm64-apple-macosx/debug/DriveScannerCore.build/sources","-I","/Users/marcoliff/Codingapps/DriveScanner/.build/arm64-apple-macosx/debug/Modules","-target","arm64-apple-macosx15.0","-incremental","-enable-batch-mode","-serialize-diagnostics","-index-store-path","/Users/marcoliff/Codingapps/DriveScanner/.build/arm64-apple-macosx/debug/index/store","-Onone","-enable-testing","-j14","-DSWIFT_PACKAGE","-DDEBUG","-DSWIFT_MODULE_RESOURCE_BUNDLE_UNAVAILABLE","-module-cache-path","/Users/marcoliff/Codingapps/DriveScanner/.build/arm64-apple-macosx/debug/ModuleCache","-parseable-output","-parse-as-library","-emit-objc-header","-emit-objc-header-path","/Users/marcoliff/Codingapps/DriveScanner/.build/arm64-apple-macosx/debug/DriveScannerCore.build/include/DriveScannerCore-Swift.h","-swift-version","6","-plugin-path","/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/host/plugins/testing","-sdk","/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk","-F","/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks","-I","/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib","-L","/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib","-g","-Xcc","-isysroot","-Xcc","/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk","-Xcc","-F","-Xcc","/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks","-Xcc","-fPIC","-Xcc","-g","-package-name","drivescanner"]
+
+  "C.DriveScannerPackageTests-arm64-apple-macosx-debug.module":
+    tool: shell
+    inputs: ["/Users/marcoliff/Codingapps/DriveScanner/.build/arm64-apple-macosx/debug/DriveScannerPackageTests.derived/runner.swift","/Users/marcoliff/Codingapps/DriveScanner/.build/arm64-apple-macosx/debug/swift-version--58304C5D6DBC2206.txt","/Users/marcoliff/Codingapps/DriveScanner/.build/arm64-apple-macosx/debug/Modules/DriveScannerTests.swiftmodule","/Users/marcoliff/Codingapps/DriveScanner/.build/arm64-apple-macosx/debug/DriveScannerPackageTests.build/sources"]
+    outputs: ["/Users/marcoliff/Codingapps/DriveScanner/.build/arm64-apple-macosx/debug/DriveScannerPackageTests.build/runner.swift.o","/Users/marcoliff/Codingapps/DriveScanner/.build/arm64-apple-macosx/debug/Modules/DriveScannerPackageTests.swiftmodule"]
+    description: "Compiling Swift Module 'DriveScannerPackageTests' (1 sources)"
+    args: ["/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc","-module-name","DriveScannerPackageTests","-emit-dependencies","-emit-module","-emit-module-path","/Users/marcoliff/Codingapps/DriveScanner/.build/arm64-apple-macosx/debug/Modules/DriveScannerPackageTests.swiftmodule","-output-file-map","/Users/marcoliff/Codingapps/DriveScanner/.build/arm64-apple-macosx/debug/DriveScannerPackageTests.build/output-file-map.json","-parse-as-library","-incremental","-c","@/Users/marcoliff/Codingapps/DriveScanner/.build/arm64-apple-macosx/debug/DriveScannerPackageTests.build/sources","-I","/Users/marcoliff/Codingapps/DriveScanner/.build/arm64-apple-macosx/debug/Modules","-target","arm64-apple-macosx15.0","-incremental","-enable-batch-mode","-serialize-diagnostics","-index-store-path","/Users/marcoliff/Codingapps/DriveScanner/.build/arm64-apple-macosx/debug/index/store","-Onone","-enable-testing","-Xfrontend","-enable-cross-import-overlays","-j14","-DSWIFT_PACKAGE","-DDEBUG","-DSWIFT_MODULE_RESOURCE_BUNDLE_UNAVAILABLE","-module-cache-path","/Users/marcoliff/Codingapps/DriveScanner/.build/arm64-apple-macosx/debug/ModuleCache","-parseable-output","-parse-as-library","-emit-objc-header","-emit-objc-header-path","/Users/marcoliff/Codingapps/DriveScanner/.build/arm64-apple-macosx/debug/DriveScannerPackageTests.build/include/DriveScannerPackageTests-Swift.h","-plugin-path","/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/host/plugins/testing","-sdk","/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk","-F","/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks","-I","/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib","-L","/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib","-g","-Xcc","-isysroot","-Xcc","/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk","-Xcc","-F","-Xcc","/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks","-Xcc","-fPIC","-Xcc","-g","-package-name","drivescanner"]
+
+  "C.DriveScannerPackageTests-arm64-apple-macosx-debug.test":
+    tool: shell
+    inputs: ["/Users/marcoliff/Codingapps/DriveScanner/.build/arm64-apple-macosx/debug/DriveScannerCore.build/ExportService.swift.o","/Users/marcoliff/Codingapps/DriveScanner/.build/arm64-apple-macosx/debug/DriveScannerCore.build/HTMLReportBuilder.swift.o","/Users/marcoliff/Codingapps/DriveScanner/.build/arm64-apple-macosx/debug/DriveScannerCore.build/HomeScanner.swift.o","/Users/marcoliff/Codingapps/DriveScanner/.build/arm64-apple-macosx/debug/DriveScannerCore.build/Models.swift.o","/Users/marcoliff/Codingapps/DriveScanner/.build/arm64-apple-macosx/debug/DriveScannerPackageTests.build/runner.swift.o","/Users/marcoliff/Codingapps/DriveScanner/.build/arm64-apple-macosx/debug/DriveScannerTests.build/HomeScannerTests.swift.o","/Users/marcoliff/Codingapps/DriveScanner/.build/arm64-apple-macosx/debug/DriveScannerPackageTests.product/Objects.LinkFileList"]
+    outputs: ["/Users/marcoliff/Codingapps/DriveScanner/.build/arm64-apple-macosx/debug/DriveScannerPackageTests.xctest/Contents/MacOS/DriveScannerPackageTests"]
+    description: "Linking ./.build/arm64-apple-macosx/debug/DriveScannerPackageTests.xctest/Contents/MacOS/DriveScannerPackageTests"
+    args: ["/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc","-L","/Users/marcoliff/Codingapps/DriveScanner/.build/arm64-apple-macosx/debug","-o","/Users/marcoliff/Codingapps/DriveScanner/.build/arm64-apple-macosx/debug/DriveScannerPackageTests.xctest/Contents/MacOS/DriveScannerPackageTests","-module-name","DriveScannerPackageTests","-Xlinker","-no_warn_duplicate_libraries","-Xlinker","-bundle","-Xlinker","-rpath","-Xlinker","@loader_path/../../../","@/Users/marcoliff/Codingapps/DriveScanner/.build/arm64-apple-macosx/debug/DriveScannerPackageTests.product/Objects.LinkFileList","-Xlinker","-rpath","-Xlinker","/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift-6.2/macosx","-target","arm64-apple-macosx15.0","-Xlinker","-add_ast_path","-Xlinker","/Users/marcoliff/Codingapps/DriveScanner/.build/arm64-apple-macosx/debug/Modules/DriveScannerCore.swiftmodule","-Xlinker","-add_ast_path","-Xlinker","/Users/marcoliff/Codingapps/DriveScanner/.build/arm64-apple-macosx/debug/Modules/DriveScannerPackageTests.swiftmodule","-Xlinker","-add_ast_path","-Xlinker","/Users/marcoliff/Codingapps/DriveScanner/.build/arm64-apple-macosx/debug/Modules/DriveScannerTests.swiftmodule","-plugin-path","/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/host/plugins/testing","-sdk","/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk","-F","/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks","-I","/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib","-L","/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib","-g"]
+
+  "C.DriveScannerTests-arm64-apple-macosx-debug.module":
+    tool: shell
+    inputs: ["/Users/marcoliff/Codingapps/DriveScanner/Tests/DriveScannerTests/HomeScannerTests.swift","/Users/marcoliff/Codingapps/DriveScanner/.build/arm64-apple-macosx/debug/swift-version--58304C5D6DBC2206.txt","/Users/marcoliff/Codingapps/DriveScanner/.build/arm64-apple-macosx/debug/Modules/DriveScannerCore.swiftmodule","/Users/marcoliff/Codingapps/DriveScanner/.build/arm64-apple-macosx/debug/DriveScannerTests.build/sources"]
+    outputs: ["/Users/marcoliff/Codingapps/DriveScanner/.build/arm64-apple-macosx/debug/DriveScannerTests.build/HomeScannerTests.swift.o","/Users/marcoliff/Codingapps/DriveScanner/.build/arm64-apple-macosx/debug/Modules/DriveScannerTests.swiftmodule"]
+    description: "Compiling Swift Module 'DriveScannerTests' (1 sources)"
+    args: ["/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc","-module-name","DriveScannerTests","-emit-dependencies","-emit-module","-emit-module-path","/Users/marcoliff/Codingapps/DriveScanner/.build/arm64-apple-macosx/debug/Modules/DriveScannerTests.swiftmodule","-output-file-map","/Users/marcoliff/Codingapps/DriveScanner/.build/arm64-apple-macosx/debug/DriveScannerTests.build/output-file-map.json","-parse-as-library","-incremental","-c","@/Users/marcoliff/Codingapps/DriveScanner/.build/arm64-apple-macosx/debug/DriveScannerTests.build/sources","-I","/Users/marcoliff/Codingapps/DriveScanner/.build/arm64-apple-macosx/debug/Modules","-target","arm64-apple-macosx15.0","-incremental","-enable-batch-mode","-serialize-diagnostics","-index-store-path","/Users/marcoliff/Codingapps/DriveScanner/.build/arm64-apple-macosx/debug/index/store","-Onone","-enable-testing","-Xfrontend","-enable-cross-import-overlays","-j14","-DSWIFT_PACKAGE","-DDEBUG","-DSWIFT_MODULE_RESOURCE_BUNDLE_UNAVAILABLE","-module-cache-path","/Users/marcoliff/Codingapps/DriveScanner/.build/arm64-apple-macosx/debug/ModuleCache","-parseable-output","-parse-as-library","-swift-version","6","-plugin-path","/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/host/plugins/testing","-sdk","/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk","-F","/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks","-I","/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib","-L","/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib","-g","-Xcc","-isysroot","-Xcc","/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk","-Xcc","-F","-Xcc","/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks","-Xcc","-fPIC","-Xcc","-g","-package-name","drivescanner"]
+
+  "PackageStructure":
+    tool: package-structure-tool
+    inputs: ["/Users/marcoliff/Codingapps/DriveScanner/Sources/DriveScanner/","/Users/marcoliff/Codingapps/DriveScanner/Sources/DriveScannerCore/","/Users/marcoliff/Codingapps/DriveScanner/Tests/DriveScannerTests/","/Users/marcoliff/Codingapps/DriveScanner/Package.swift","/Users/marcoliff/Codingapps/DriveScanner/Package.resolved"]
+    outputs: ["<PackageStructure>"]
+    description: "Planning build"
+    allow-missing-inputs: true
+

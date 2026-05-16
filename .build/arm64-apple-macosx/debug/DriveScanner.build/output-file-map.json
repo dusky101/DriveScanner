@@ -1,0 +1,19 @@
+{
+  "": {
+    "swift-dependencies": "/Users/marcoliff/Codingapps/DriveScanner/.build/arm64-apple-macosx/debug/DriveScanner.build/primary.swiftdeps"
+  },
+  "/Users/marcoliff/Codingapps/DriveScanner/Sources/DriveScanner/ContentView.swift": {
+    "dependencies": "/Users/marcoliff/Codingapps/DriveScanner/.build/arm64-apple-macosx/debug/DriveScanner.build/ContentView.d",
+    "object": "/Users/marcoliff/Codingapps/DriveScanner/.build/arm64-apple-macosx/debug/DriveScanner.build/ContentView.swift.o",
+    "swiftmodule": "/Users/marcoliff/Codingapps/DriveScanner/.build/arm64-apple-macosx/debug/DriveScanner.build/ContentView~partial.swiftmodule",
+    "swift-dependencies": "/Users/marcoliff/Codingapps/DriveScanner/.build/arm64-apple-macosx/debug/DriveScanner.build/ContentView.swiftdeps",
+    "diagnostics": "/Users/marcoliff/Codingapps/DriveScanner/.build/arm64-apple-macosx/debug/DriveScanner.build/ContentView.dia"
+  },
+  "/Users/marcoliff/Codingapps/DriveScanner/Sources/DriveScanner/MigrationAssistantApp.swift": {
+    "dependencies": "/Users/marcoliff/Codingapps/DriveScanner/.build/arm64-apple-macosx/debug/DriveScanner.build/MigrationAssistantApp.d",
+    "object": "/Users/marcoliff/Codingapps/DriveScanner/.build/arm64-apple-macosx/debug/DriveScanner.build/MigrationAssistantApp.swift.o",
+    "swiftmodule": "/Users/marcoliff/Codingapps/DriveScanner/.build/arm64-apple-macosx/debug/DriveScanner.build/MigrationAssistantApp~partial.swiftmodule",
+    "swift-dependencies": "/Users/marcoliff/Codingapps/DriveScanner/.build/arm64-apple-macosx/debug/DriveScanner.build/MigrationAssistantApp.swiftdeps",
+    "diagnostics": "/Users/marcoliff/Codingapps/DriveScanner/.build/arm64-apple-macosx/debug/DriveScanner.build/MigrationAssistantApp.dia"
+  }
+}

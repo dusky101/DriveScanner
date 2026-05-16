@@ -1,0 +1,33 @@
+{
+  "": {
+    "swift-dependencies": "/Users/marcoliff/Codingapps/DriveScanner/.build/arm64-apple-macosx/debug/DriveScannerCore.build/primary.swiftdeps"
+  },
+  "/Users/marcoliff/Codingapps/DriveScanner/Sources/DriveScannerCore/ExportService.swift": {
+    "dependencies": "/Users/marcoliff/Codingapps/DriveScanner/.build/arm64-apple-macosx/debug/DriveScannerCore.build/ExportService.d",
+    "object": "/Users/marcoliff/Codingapps/DriveScanner/.build/arm64-apple-macosx/debug/DriveScannerCore.build/ExportService.swift.o",
+    "swiftmodule": "/Users/marcoliff/Codingapps/DriveScanner/.build/arm64-apple-macosx/debug/DriveScannerCore.build/ExportService~partial.swiftmodule",
+    "swift-dependencies": "/Users/marcoliff/Codingapps/DriveScanner/.build/arm64-apple-macosx/debug/DriveScannerCore.build/ExportService.swiftdeps",
+    "diagnostics": "/Users/marcoliff/Codingapps/DriveScanner/.build/arm64-apple-macosx/debug/DriveScannerCore.build/ExportService.dia"
+  },
+  "/Users/marcoliff/Codingapps/DriveScanner/Sources/DriveScannerCore/HTMLReportBuilder.swift": {
+    "dependencies": "/Users/marcoliff/Codingapps/DriveScanner/.build/arm64-apple-macosx/debug/DriveScannerCore.build/HTMLReportBuilder.d",
+    "object": "/Users/marcoliff/Codingapps/DriveScanner/.build/arm64-apple-macosx/debug/DriveScannerCore.build/HTMLReportBuilder.swift.o",
+    "swiftmodule": "/Users/marcoliff/Codingapps/DriveScanner/.build/arm64-apple-macosx/debug/DriveScannerCore.build/HTMLReportBuilder~partial.swiftmodule",
+    "swift-dependencies": "/Users/marcoliff/Codingapps/DriveScanner/.build/arm64-apple-macosx/debug/DriveScannerCore.build/HTMLReportBuilder.swiftdeps",
+    "diagnostics": "/Users/marcoliff/Codingapps/DriveScanner/.build/arm64-apple-macosx/debug/DriveScannerCore.build/HTMLReportBuilder.dia"
+  },
+  "/Users/marcoliff/Codingapps/DriveScanner/Sources/DriveScannerCore/HomeScanner.swift": {
+    "dependencies": "/Users/marcoliff/Codingapps/DriveScanner/.build/arm64-apple-macosx/debug/DriveScannerCore.build/HomeScanner.d",
+    "object": "/Users/marcoliff/Codingapps/DriveScanner/.build/arm64-apple-macosx/debug/DriveScannerCore.build/HomeScanner.swift.o",
+    "swiftmodule": "/Users/marcoliff/Codingapps/DriveScanner/.build/arm64-apple-macosx/debug/DriveScannerCore.build/HomeScanner~partial.swiftmodule",
+    "swift-dependencies": "/Users/marcoliff/Codingapps/DriveScanner/.build/arm64-apple-macosx/debug/DriveScannerCore.build/HomeScanner.swiftdeps",
+    "diagnostics": "/Users/marcoliff/Codingapps/DriveScanner/.build/arm64-apple-macosx/debug/DriveScannerCore.build/HomeScanner.dia"
+  },
+  "/Users/marcoliff/Codingapps/DriveScanner/Sources/DriveScannerCore/Models.swift": {
+    "dependencies": "/Users/marcoliff/Codingapps/DriveScanner/.build/arm64-apple-macosx/debug/DriveScannerCore.build/Models.d",
+    "object": "/Users/marcoliff/Codingapps/DriveScanner/.build/arm64-apple-macosx/debug/DriveScannerCore.build/Models.swift.o",
+    "swiftmodule": "/Users/marcoliff/Codingapps/DriveScanner/.build/arm64-apple-macosx/debug/DriveScannerCore.build/Models~partial.swiftmodule",
+    "swift-dependencies": "/Users/marcoliff/Codingapps/DriveScanner/.build/arm64-apple-macosx/debug/DriveScannerCore.build/Models.swiftdeps",
+    "diagnostics": "/Users/marcoliff/Codingapps/DriveScanner/.build/arm64-apple-macosx/debug/DriveScannerCore.build/Models.dia"
+  }
+}

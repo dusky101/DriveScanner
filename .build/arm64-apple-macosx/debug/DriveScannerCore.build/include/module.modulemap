@@ -1,0 +1,3 @@
+module DriveScannerCore {
+    header "/Users/marcoliff/Codingapps/DriveScanner/.build/arm64-apple-macosx/debug/DriveScannerCore.build/include/DriveScannerCore-Swift.h"
+}
