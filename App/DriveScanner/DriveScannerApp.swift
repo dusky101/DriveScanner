@@ -1,8 +1,9 @@
 import AppKit
+import DriveScannerUI
 import SwiftUI
 
 @main
-struct MigrationAssistantApp: App {
+struct DriveScannerApp: App {
     var body: some Scene {
         WindowGroup {
             ContentView()

@@ -5,17 +5,24 @@ let package = Package(
     name: "DriveScanner",
     platforms: [.macOS("15.0")],
     products: [
-        .executable(name: "DriveScanner", targets: ["DriveScanner"]),
+        .library(name: "DriveScannerCore", targets: ["DriveScannerCore"]),
+        .library(name: "DriveScannerUI", targets: ["DriveScannerUI"]),
+        .executable(name: "DriveScanner", targets: ["DriveScannerApp"]),
     ],
     targets: [
         .target(
             name: "DriveScannerCore",
             path: "Sources/DriveScannerCore"
         ),
-        .executableTarget(
-            name: "DriveScanner",
+        .target(
+            name: "DriveScannerUI",
             dependencies: ["DriveScannerCore"],
-            path: "Sources/DriveScanner"
+            path: "Sources/DriveScannerUI"
+        ),
+        .executableTarget(
+            name: "DriveScannerApp",
+            dependencies: ["DriveScannerUI"],
+            path: "Sources/DriveScannerApp"
         ),
         .testTarget(
             name: "DriveScannerTests",

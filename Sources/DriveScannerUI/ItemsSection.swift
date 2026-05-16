@@ -72,7 +72,14 @@ struct ItemsSection: View {
     }
 
     private var table: some View {
-        Table(visibleCandidates, selection: $selection, sortOrder: $sortOrder) {
+        Table(visibleCandidates, sortOrder: $sortOrder) {
+            TableColumn("") { item in
+                Toggle("", isOn: binding(for: item))
+                    .toggleStyle(.checkbox)
+                    .labelsHidden()
+            }
+            .width(28)
+
             TableColumn("Name", value: \.name) { item in
                 ItemNameCell(item: item)
             }
@@ -105,6 +112,19 @@ struct ItemsSection: View {
         .onChange(of: sortOrder) { _, newValue in
             candidates.sort(using: newValue)
         }
+    }
+
+    private func binding(for item: CandidateItem) -> Binding<Bool> {
+        Binding(
+            get: { selection.contains(item.id) },
+            set: { newValue in
+                if newValue {
+                    selection.insert(item.id)
+                } else {
+                    selection.remove(item.id)
+                }
+            }
+        )
     }
 }
 

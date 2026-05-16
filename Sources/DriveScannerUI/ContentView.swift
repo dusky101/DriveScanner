@@ -2,7 +2,9 @@ import AppKit
 import DriveScannerCore
 import SwiftUI
 
-struct ContentView: View {
+public struct ContentView: View {
+    public init() {}
+
     // MARK: - State
 
     @State private var candidates: [CandidateItem] = []
@@ -50,7 +52,7 @@ struct ContentView: View {
 
     // MARK: - Body
 
-    var body: some View {
+    public var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 ScanHeader(
