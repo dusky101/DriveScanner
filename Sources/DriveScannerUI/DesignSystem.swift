@@ -219,6 +219,41 @@ struct EmptyStateView: View {
     }
 }
 
+// MARK: - Selection summary
+
+/// Compact accent-tinted capsule that shows "N · X GB" — used in section headers.
+struct SelectionSummary: View {
+    let count: Int
+    let sizeBytes: Int64
+    var icon: String = "tray.full.fill"
+
+    private var formattedBytes: String {
+        ByteCountFormatter.string(fromByteCount: sizeBytes, countStyle: .file)
+    }
+
+    var body: some View {
+        HStack(spacing: 5) {
+            Image(systemName: icon)
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(.tint)
+            Text("\(count) · \(formattedBytes)")
+                .font(.caption.monospacedDigit().weight(.semibold))
+                .foregroundStyle(.primary)
+        }
+        .padding(.horizontal, 9)
+        .padding(.vertical, 4)
+        .background(Capsule().fill(Color.accentColor.opacity(0.12)))
+        .overlay(Capsule().stroke(Color.accentColor.opacity(0.25), lineWidth: 0.5))
+    }
+}
+
+// MARK: - Cross-module commands
+
+public extension Notification.Name {
+    static let driveScannerResetWindowSize = Notification.Name("DriveScanner.resetWindowSize")
+    static let driveScannerClearCopyHistoryRequested = Notification.Name("DriveScanner.clearCopyHistoryRequested")
+}
+
 // MARK: - Helpers
 
 enum PathFormat {
@@ -227,5 +262,16 @@ enum PathFormat {
         let p = url.path
         if p.hasPrefix(home) { return "~" + p.dropFirst(home.count) }
         return p
+    }
+}
+
+extension Date {
+    /// "Copied 16 May 2026" — short medium-date for the copy history badge.
+    var copiedBadgeText: String {
+        let f = DateFormatter()
+        f.dateStyle = .medium
+        f.timeStyle = .none
+        f.locale = Locale(identifier: "en_GB")
+        return "Copied \(f.string(from: self))"
     }
 }

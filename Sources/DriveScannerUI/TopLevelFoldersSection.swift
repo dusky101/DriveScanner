@@ -6,19 +6,27 @@ struct TopLevelFoldersSection: View {
     @Binding var selection: Set<CandidateItem.ID>
     @Binding var sortOrder: [KeyPathComparator<TopLevelFolder>]
     let measuringIDs: Set<CandidateItem.ID>
+    let previouslyCopiedIDs: Set<CandidateItem.ID>
+    let allowRecopy: Bool
+    let selectedCount: Int
+    let selectedBytes: Int64
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            SectionHeader(
-                icon: "house.fill",
-                title: "Top-level folders in your home",
-                subtitle: "Tick a folder to select everything inside",
-                count: folders.isEmpty ? nil : folders.count,
-                accent: Color(red: 0.04, green: 0.50, blue: 0.96)
-            )
+            HStack(spacing: 12) {
+                SectionHeader(
+                    icon: "house.fill",
+                    title: "Top-level folders",
+                    subtitle: "Tick to cascade · partial when only some children selected",
+                    count: folders.isEmpty ? nil : folders.count,
+                    accent: Color(red: 0.04, green: 0.50, blue: 0.96)
+                )
+                SelectionSummary(count: selectedCount, sizeBytes: selectedBytes)
+            }
             content
         }
         .card()
+        .frame(maxHeight: .infinity)
     }
 
     @ViewBuilder
@@ -36,6 +44,7 @@ struct TopLevelFoldersSection: View {
                 Toggle("", isOn: binding(for: folder))
                     .toggleStyle(.checkbox)
                     .labelsHidden()
+                    .disabled(selectableChildIDs(of: folder).isEmpty)
             }
             .width(28)
 
@@ -57,41 +66,43 @@ struct TopLevelFoldersSection: View {
                     .foregroundStyle(.secondary)
             }
             .width(min: 80, ideal: 95, max: 130)
-
-            TableColumn("Path", value: \.url.path) { folder in
-                Text(PathFormat.tildeHome(folder.url))
-                    .font(.caption.monospaced())
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-            }
         }
         .tableStyle(.inset(alternatesRowBackgrounds: true))
-        .frame(minHeight: 180, idealHeight: 240)
+        .frame(minHeight: 200, maxHeight: .infinity)
         .onChange(of: sortOrder) { _, newValue in
             folders.sort(using: newValue)
+        }
+    }
+
+    /// Children we're allowed to add to selection — excludes previously-copied items when re-copy is off.
+    private func selectableChildIDs(of folder: TopLevelFolder) -> [CandidateItem.ID] {
+        folder.childIDs.filter { id in
+            allowRecopy || !previouslyCopiedIDs.contains(id)
         }
     }
 
     private func binding(for folder: TopLevelFolder) -> Binding<Bool> {
         Binding(
             get: {
-                !folder.childIDs.isEmpty && folder.childIDs.allSatisfy { selection.contains($0) }
+                let allowed = selectableChildIDs(of: folder)
+                return !allowed.isEmpty && allowed.allSatisfy { selection.contains($0) }
             },
             set: { newValue in
+                let allowed = selectableChildIDs(of: folder)
                 if newValue {
-                    selection.formUnion(folder.childIDs)
+                    selection.formUnion(allowed)
                 } else {
-                    selection.subtract(folder.childIDs)
+                    selection.subtract(allowed)
                 }
             }
         )
     }
 
     private func isPartiallySelected(_ folder: TopLevelFolder) -> Bool {
-        guard !folder.childIDs.isEmpty else { return false }
-        let count = folder.childIDs.reduce(0) { $0 + (selection.contains($1) ? 1 : 0) }
-        return count > 0 && count < folder.childIDs.count
+        let allowed = selectableChildIDs(of: folder)
+        guard !allowed.isEmpty else { return false }
+        let count = allowed.reduce(0) { $0 + (selection.contains($1) ? 1 : 0) }
+        return count > 0 && count < allowed.count
     }
 
     private func isMeasuring(_ folder: TopLevelFolder) -> Bool {

@@ -712,6 +712,71 @@ struct ArchiveServiceTests {
     }
 }
 
+@Suite("CopyHistoryStore")
+struct CopyHistoryStoreTests {
+    @Test("save then load round-trips entries with ISO-8601 dates")
+    func roundTrip() throws {
+        let fm = FileManager.default
+        let url = fm.temporaryDirectory.appendingPathComponent("DriveScannerCopyHist-\(UUID().uuidString).json")
+        defer { try? fm.removeItem(at: url) }
+
+        let history = CopiedHistory(entries: [
+            CopiedEntry(
+                path: "/Users/test/Codingapps/DriveScanner",
+                sizeBytes: 12_345,
+                copiedAt: Date(timeIntervalSince1970: 1_715_817_600),
+                bundleName: "DriveScanner-test-2024-05-16"
+            ),
+        ])
+        try CopyHistoryStore.save(history, to: url)
+        let loaded = CopyHistoryStore.load(from: url)
+
+        #expect(loaded.entries.count == 1)
+        #expect(loaded.entries.first?.path == "/Users/test/Codingapps/DriveScanner")
+        #expect(loaded.entries.first?.sizeBytes == 12_345)
+        #expect(loaded.entries.first?.bundleName == "DriveScanner-test-2024-05-16")
+    }
+
+    @Test("load returns empty history when file absent")
+    func loadMissing() {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("DriveScannerNoHist-\(UUID().uuidString).json")
+        let loaded = CopyHistoryStore.load(from: url)
+        #expect(loaded.entries.isEmpty)
+    }
+
+    @Test("append dedupes by path and updates the timestamp")
+    func appendDedupes() {
+        let oldDate = Date(timeIntervalSince1970: 1_700_000_000)
+        let newDate = Date(timeIntervalSince1970: 1_715_817_600)
+        let initial = CopiedHistory(entries: [
+            CopiedEntry(path: "/x/a", sizeBytes: 100, copiedAt: oldDate, bundleName: "old"),
+        ])
+        let item = CandidateItem(
+            url: URL(fileURLWithPath: "/x/a"),
+            name: "a",
+            isDirectory: true, isSymlink: false,
+            sizeBytes: 500, modificationDate: nil,
+            category: .personalData
+        )
+        let updated = CopyHistoryStore.append(items: [item], bundleName: "new", to: initial, now: newDate)
+        #expect(updated.entries.count == 1)
+        #expect(updated.entries.first?.bundleName == "new")
+        #expect(updated.entries.first?.sizeBytes == 500)
+        #expect(updated.entries.first?.copiedAt == newDate)
+    }
+
+    @Test("pathSet returns all paths for fast lookup")
+    func pathSet() {
+        let history = CopiedHistory(entries: [
+            CopiedEntry(path: "/x/a", sizeBytes: 100, copiedAt: Date(), bundleName: "b1"),
+            CopiedEntry(path: "/x/b", sizeBytes: 200, copiedAt: Date(), bundleName: "b2"),
+        ])
+        #expect(history.pathSet == ["/x/a", "/x/b"])
+        #expect(history.entry(for: "/x/a")?.bundleName == "b1")
+        #expect(history.entry(for: "/x/missing") == nil)
+    }
+}
+
 @Suite("ExportService")
 struct ExportServiceTests {
     @Test("copyItems uses numeric suffix on collision")

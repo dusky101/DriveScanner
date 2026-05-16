@@ -6,9 +6,14 @@ struct ItemsSection: View {
     @Binding var selection: Set<CandidateItem.ID>
     @Binding var sortOrder: [KeyPathComparator<CandidateItem>]
     @Binding var searchText: String
+    @Binding var allowRecopy: Bool
     let measuringIDs: Set<CandidateItem.ID>
     let fileNamesByID: [CandidateItem.ID: [String]]
+    let previouslyCopiedIDs: Set<CandidateItem.ID>
+    let copyHistoryLookup: (CandidateItem.ID) -> CopiedEntry?
     let isExporting: Bool
+    let selectedCount: Int
+    let selectedBytes: Int64
 
     private var visibleCandidates: [CandidateItem] {
         let q = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
@@ -22,24 +27,35 @@ struct ItemsSection: View {
         }
     }
 
+    private var copiedCountInVisible: Int {
+        visibleCandidates.reduce(0) { $0 + (previouslyCopiedIDs.contains($1.id) ? 1 : 0) }
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            SectionHeader(
-                icon: "doc.on.doc.fill",
-                title: "Items to migrate",
-                subtitle: subtitle,
-                count: candidates.isEmpty ? nil : visibleCandidates.count,
-                accent: Color(red: 0.10, green: 0.62, blue: 0.34)
-            )
+            HStack(spacing: 12) {
+                SectionHeader(
+                    icon: "doc.on.doc.fill",
+                    title: "Items to migrate",
+                    subtitle: subtitle,
+                    count: candidates.isEmpty ? nil : visibleCandidates.count,
+                    accent: Color(red: 0.10, green: 0.62, blue: 0.34)
+                )
+                SelectionSummary(count: selectedCount, sizeBytes: selectedBytes)
+            }
             searchAndActions
             content
         }
         .card()
+        .frame(maxHeight: .infinity)
     }
 
     private var subtitle: String {
         if !searchText.isEmpty {
             return "Search matches folder names and any file inside"
+        }
+        if copiedCountInVisible > 0 {
+            return "\(copiedCountInVisible) item(s) already migrated — toggle \"Allow re-copy\" to re-include them"
         }
         return "Includes expanded projects and developer configs"
     }
@@ -48,7 +64,10 @@ struct ItemsSection: View {
         HStack(spacing: 8) {
             SearchField(text: $searchText, placeholder: "Search by folder or any file inside…")
             Button {
-                selection.formUnion(visibleCandidates.map(\.id))
+                let addable = visibleCandidates
+                    .filter { allowRecopy || !previouslyCopiedIDs.contains($0.id) }
+                    .map(\.id)
+                selection.formUnion(addable)
             } label: {
                 Label("Select visible", systemImage: "checkmark.circle")
             }
@@ -59,6 +78,11 @@ struct ItemsSection: View {
                 Label("Clear visible", systemImage: "circle")
             }
             .disabled(visibleCandidates.isEmpty || isExporting)
+            Toggle(isOn: $allowRecopy) {
+                Label("Allow re-copy", systemImage: "arrow.uturn.backward.circle")
+            }
+            .toggleStyle(.button)
+            .help("When on, items previously copied can be ticked again.")
         }
     }
 
@@ -77,11 +101,16 @@ struct ItemsSection: View {
                 Toggle("", isOn: binding(for: item))
                     .toggleStyle(.checkbox)
                     .labelsHidden()
+                    .disabled(isDisabled(item))
             }
             .width(28)
 
             TableColumn("Name", value: \.name) { item in
-                ItemNameCell(item: item)
+                ItemNameCell(
+                    item: item,
+                    wasCopied: previouslyCopiedIDs.contains(item.id),
+                    copiedAt: copyHistoryLookup(item.id)?.copiedAt
+                )
             }
 
             TableColumn("Size", value: \.sizeBytes) { item in
@@ -108,10 +137,14 @@ struct ItemsSection: View {
             }
         }
         .tableStyle(.inset(alternatesRowBackgrounds: true))
-        .frame(minHeight: 320)
+        .frame(minHeight: 200, maxHeight: .infinity)
         .onChange(of: sortOrder) { _, newValue in
             candidates.sort(using: newValue)
         }
+    }
+
+    private func isDisabled(_ item: CandidateItem) -> Bool {
+        previouslyCopiedIDs.contains(item.id) && !allowRecopy
     }
 
     private func binding(for item: CandidateItem) -> Binding<Bool> {
@@ -166,15 +199,19 @@ private struct SearchField: View {
 
 private struct ItemNameCell: View {
     let item: CandidateItem
+    let wasCopied: Bool
+    let copiedAt: Date?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 6) {
                 Image(systemName: item.category.iconName)
-                    .foregroundStyle(item.category.swatch)
+                    .foregroundStyle(wasCopied ? AnyShapeStyle(Color.secondary) : AnyShapeStyle(item.category.swatch))
                     .font(.callout)
                 Text(item.name)
                     .lineLimit(1)
+                    .strikethrough(wasCopied, color: .secondary)
+                    .foregroundStyle(wasCopied ? .secondary : .primary)
                 if item.isSymlink {
                     PillLabel(label: "symlink", color: .orange)
                 }
@@ -184,9 +221,15 @@ private struct ItemNameCell: View {
                 if let stack = item.stack {
                     PillLabel(label: stack.displayLabel, color: .secondary)
                 }
+                if wasCopied, let at = copiedAt {
+                    PillLabel(label: at.copiedBadgeText, color: .gray, icon: "checkmark.seal.fill")
+                } else if wasCopied {
+                    PillLabel(label: "Copied", color: .gray, icon: "checkmark.seal.fill")
+                }
             }
         }
         .padding(.vertical, 1)
+        .opacity(wasCopied ? 0.75 : 1.0)
     }
 }
 

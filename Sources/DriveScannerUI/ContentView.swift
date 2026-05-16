@@ -21,8 +21,11 @@ public struct ContentView: View {
     @State private var isExporting = false
     @State private var showingBundleSheet = false
     @State private var showingBrewDetail = false
+    @State private var showingClearHistoryAlert = false
     @State private var measuringIDs: Set<CandidateItem.ID> = []
     @State private var fileNamesByID: [CandidateItem.ID: [String]] = [:]
+    @State private var copyHistory: CopiedHistory = CopiedHistory()
+    @State private var allowRecopy: Bool = false
     @State private var sortOrder: [KeyPathComparator<CandidateItem>] = [
         .init(\.sizeBytes, order: .reverse)
     ]
@@ -50,61 +53,97 @@ public struct ContentView: View {
         return (done, dirs.count)
     }
 
+    private var previouslyCopiedIDs: Set<CandidateItem.ID> {
+        copyHistory.pathSet
+    }
+
+    private var selectedTotalBytes: Int64 {
+        selection.reduce(Int64(0)) { total, id in
+            total + (candidatesByID[id]?.sizeBytes ?? 0)
+        }
+    }
+
+    private var topLevelSelectedCount: Int {
+        topLevelFolders.reduce(0) { count, folder in
+            count + (folder.childIDs.contains { selection.contains($0) } ? 1 : 0)
+        }
+    }
+
     // MARK: - Body
 
     public var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                ScanHeader(
-                    userContext: currentUserContext(),
-                    hasScanned: !candidates.isEmpty,
-                    isScanning: isScanning,
-                    isExporting: isExporting,
-                    measurementProgress: measurementProgress,
-                    onScan: { Task { await runScan() } }
-                )
-                OverviewSection(
-                    mediaMeasurements: mediaMeasurements,
-                    mediaLoading: mediaLoading,
-                    homebrewInfo: homebrewInfo,
-                    brewLoading: brewLoading,
-                    onOpenHomebrew: { showingBrewDetail = true }
-                )
+        VStack(spacing: 14) {
+            ScanHeader(
+                userContext: currentUserContext(),
+                hasScanned: !candidates.isEmpty,
+                isScanning: isScanning,
+                isExporting: isExporting,
+                measurementProgress: measurementProgress,
+                onScan: { Task { await runScan() } }
+            )
+            OverviewSection(
+                mediaMeasurements: mediaMeasurements,
+                mediaLoading: mediaLoading,
+                homebrewInfo: homebrewInfo,
+                brewLoading: brewLoading,
+                onOpenHomebrew: { showingBrewDetail = true }
+            )
+
+            HSplitView {
                 TopLevelFoldersSection(
                     folders: $topLevelFolders,
                     selection: $selection,
                     sortOrder: $topLevelSortOrder,
-                    measuringIDs: measuringIDs
+                    measuringIDs: measuringIDs,
+                    previouslyCopiedIDs: previouslyCopiedIDs,
+                    allowRecopy: allowRecopy,
+                    selectedCount: topLevelSelectedCount,
+                    selectedBytes: selectedTotalBytes
                 )
+                .frame(minWidth: 320, idealWidth: 420)
                 ItemsSection(
                     candidates: $candidates,
                     selection: $selection,
                     sortOrder: $sortOrder,
                     searchText: $searchText,
+                    allowRecopy: $allowRecopy,
                     measuringIDs: measuringIDs,
                     fileNamesByID: fileNamesByID,
-                    isExporting: isExporting
-                )
-                ActionsFooter(
-                    canExport: canExport,
-                    isMeasuring: isMeasuring && !selection.isEmpty,
-                    onSaveHTML: saveHTMLReport,
-                    onCreateBundle: { showingBundleSheet = true }
-                )
-                StatusBar(
-                    message: statusMessage,
+                    previouslyCopiedIDs: previouslyCopiedIDs,
+                    copyHistoryLookup: { id in copyHistory.entry(for: id) },
                     isExporting: isExporting,
-                    errorMessage: scanError
+                    selectedCount: selection.count,
+                    selectedBytes: selectedTotalBytes
                 )
+                .frame(minWidth: 420, idealWidth: 760)
             }
-            .padding(20)
-            .frame(maxWidth: 1180, alignment: .top)
-            .frame(maxWidth: .infinity)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+            ActionsFooter(
+                canExport: canExport,
+                isMeasuring: isMeasuring && !selection.isEmpty,
+                onSaveHTML: saveHTMLReport,
+                onCreateBundle: { showingBundleSheet = true }
+            )
+            StatusBar(
+                message: statusMessage,
+                isExporting: isExporting,
+                errorMessage: scanError
+            )
         }
+        .padding(16)
+        .frame(minWidth: 980, minHeight: 660)
         .background(Color(nsColor: .windowBackgroundColor))
         .task {
+            copyHistory = CopyHistoryStore.load()
             await measureMediaFoldersInitial()
             await loadHomebrew()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .driveScannerResetWindowSize)) { _ in
+            NSApp.keyWindow?.setContentSize(NSSize(width: 1280, height: 800))
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .driveScannerClearCopyHistoryRequested)) { _ in
+            showingClearHistoryAlert = true
         }
         .sheet(isPresented: $showingBundleSheet) {
             BundleSheet(
@@ -120,6 +159,15 @@ public struct ContentView: View {
             if let info = homebrewInfo, !info.isEmpty {
                 HomebrewDetailSheet(info: info, onDismiss: { showingBrewDetail = false })
             }
+        }
+        .alert("Clear copy history?", isPresented: $showingClearHistoryAlert) {
+            Button("Clear", role: .destructive) {
+                CopyHistoryStore.clear()
+                copyHistory = CopiedHistory()
+            }
+            Button("Cancel", role: .cancel) { }
+        } message: {
+            Text("This deletes the record of \(copyHistory.entries.count) previously-copied item(s). They will become tickable again on the next scan.")
         }
     }
 
@@ -141,7 +189,13 @@ public struct ContentView: View {
             measuringIDs = Set(candidates.filter { $0.isDirectory && !$0.isSymlink }.map(\.id))
             let projects = candidates.filter { $0.category == .codeProject }.count
             let configs = candidates.filter { $0.category == .devConfig }.count
-            statusMessage = "Found \(candidates.count) items in \(topLevelFolders.count) top-level folders — \(projects) projects, \(configs) dev configs. Measuring sizes…"
+            let previouslyCopiedCount = candidates.filter { previouslyCopiedIDs.contains($0.id) }.count
+            var msg = "Found \(candidates.count) items in \(topLevelFolders.count) top-level folders — \(projects) projects, \(configs) dev configs."
+            if previouslyCopiedCount > 0 {
+                msg += " \(previouslyCopiedCount) already migrated."
+            }
+            msg += " Measuring sizes…"
+            statusMessage = msg
             startSizeMeasurements()
         } catch {
             scanError = error.localizedDescription
@@ -380,12 +434,12 @@ public struct ContentView: View {
 
             switch config.format {
             case .folder:
-                statusMessage = "Bundle ready at \(result.bundleURL.path) (\(result.copiedCount) copied, \(result.skippedCount) skipped)"
+                statusMessage = "Bundle ready at \(result.bundleURL.path) (\(result.copiedCount) copied, \(result.skippedCount) skipped) · inventory.html included"
             case .targz:
                 let outURL = config.destinationDirectory.appendingPathComponent("\(config.bundleName).tar.gz")
                 statusMessage = "Creating tar.gz…"
                 try await ArchiveService.createTarGz(bundleDir: workingDir, outputArchive: outURL)
-                statusMessage = "Bundle ready at \(outURL.path)"
+                statusMessage = "Bundle ready at \(outURL.path) · inventory.html included"
             case .encryptedDmg:
                 let outURL = config.destinationDirectory.appendingPathComponent("\(config.bundleName).dmg")
                 let volumeName = ArchiveService.sanitizedVolumeName(config.bundleName)
@@ -396,8 +450,17 @@ public struct ContentView: View {
                     volumeName: volumeName,
                     password: config.password
                 )
-                statusMessage = "Encrypted DMG ready at \(outURL.path)"
+                statusMessage = "Encrypted DMG ready at \(outURL.path) · inventory.html included"
             }
+
+            // Record successfully-copied items in the persistent history.
+            let updated = CopyHistoryStore.append(
+                items: selectedItems,
+                bundleName: config.bundleName,
+                to: copyHistory
+            )
+            try? CopyHistoryStore.save(updated)
+            copyHistory = updated
 
             if isTemp {
                 let tempRoot = workingDir.deletingLastPathComponent()
@@ -415,5 +478,5 @@ public struct ContentView: View {
 
 #Preview {
     ContentView()
-        .frame(width: 980, height: 720)
+        .frame(width: 1280, height: 800)
 }
