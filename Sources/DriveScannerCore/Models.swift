@@ -165,6 +165,37 @@ public struct MediaFolderMeasurement: Sendable {
     }
 }
 
+/// A visible non-standard top-level folder in `~/`. Surfaced in its own UI section so the user
+/// can tick a parent (e.g. `~/Codingapps`) and have its children auto-selected, even when the
+/// scanner has expanded that parent into per-app rows.
+public struct TopLevelFolder: Identifiable, Hashable, Sendable {
+    public let id: String
+    public let url: URL
+    public let name: String
+    /// Candidate IDs that live under this top-level folder. When the parent was expanded these
+    /// are the expanded child IDs; otherwise it's a single ID equal to the parent's own.
+    public let childIDs: [String]
+
+    public init(url: URL, name: String, childIDs: [String]) {
+        self.url = url
+        self.name = name
+        self.childIDs = childIDs
+        self.id = url.path(percentEncoded: false)
+    }
+}
+
+/// Output of `HomeScanner.scan`: the flat candidate list (used by the existing items table)
+/// plus the visible top-level folders (used by the new "Top-level folders" table).
+public struct ScanResult: Sendable {
+    public let candidates: [CandidateItem]
+    public let topLevelFolders: [TopLevelFolder]
+
+    public init(candidates: [CandidateItem], topLevelFolders: [TopLevelFolder]) {
+        self.candidates = candidates
+        self.topLevelFolders = topLevelFolders
+    }
+}
+
 public struct ScanSummary: Sendable {
     public let candidates: [CandidateItem]
     public let mediaMeasurements: [MediaFolderMeasurement]

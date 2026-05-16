@@ -102,6 +102,51 @@ struct HomeScannerTests {
         #expect(byName["loose-notes"]?.category == .personalData)
     }
 
+    @Test("scan returns topLevelFolders for visible folders only and maps them to candidate childIDs")
+    func scanTopLevelFolders() throws {
+        let fm = FileManager.default
+        let home = fm.temporaryDirectory.appendingPathComponent("DriveScannerTop-\(UUID().uuidString)", isDirectory: true)
+        try fm.createDirectory(at: home, withIntermediateDirectories: true)
+        defer { try? fm.removeItem(at: home) }
+
+        // Non-expanded folder (no project markers in any children)
+        try fm.createDirectory(at: home.appendingPathComponent("Gokarting", isDirectory: true), withIntermediateDirectories: true)
+
+        // Expanded parent: 3 project children → parent dropped from candidates, but topLevelFolders includes it
+        let parent = home.appendingPathComponent("Codingapps", isDirectory: true)
+        try fm.createDirectory(at: parent, withIntermediateDirectories: true)
+        for name in ["AppA", "AppB", "AppC"] {
+            let proj = parent.appendingPathComponent(name, isDirectory: true)
+            try fm.createDirectory(at: proj, withIntermediateDirectories: true)
+            try "// swift".write(to: proj.appendingPathComponent("Package.swift"), atomically: true, encoding: .utf8)
+        }
+
+        // Loose file at top-level → in candidates but NOT in topLevelFolders
+        try "data".write(to: home.appendingPathComponent("notes.txt"), atomically: true, encoding: .utf8)
+
+        // Dotfile → in candidates but NOT in topLevelFolders
+        try fm.createDirectory(at: home.appendingPathComponent(".claude", isDirectory: true), withIntermediateDirectories: true)
+
+        let result = try HomeScanner.scan(homeURL: home, fileManager: fm)
+
+        let topNames = Set(result.topLevelFolders.map(\.name))
+        #expect(topNames == ["Codingapps", "Gokarting"], "Expected only visible non-standard directories, got \(topNames)")
+
+        let codingapps = result.topLevelFolders.first { $0.name == "Codingapps" }!
+        #expect(codingapps.childIDs.count == 3, "Codingapps was expanded — should map to 3 child candidate IDs")
+
+        let gokarting = result.topLevelFolders.first { $0.name == "Gokarting" }!
+        #expect(gokarting.childIDs.count == 1, "Gokarting was not expanded — single childID equal to its own")
+
+        // All childIDs must resolve to actual candidates
+        let candidateIDs = Set(result.candidates.map(\.id))
+        for f in result.topLevelFolders {
+            for cid in f.childIDs {
+                #expect(candidateIDs.contains(cid), "Top-level folder \(f.name) references unknown candidate id \(cid)")
+            }
+        }
+    }
+
     @Test("scanCandidates filters dotfile blocklist")
     func scanDotfileBlocklist() throws {
         let fm = FileManager.default

@@ -50,13 +50,17 @@ public enum HomeScanner: Sendable {
         ".zcompdump",
     ]
 
-    /// Top-level scan: visible non-skipped non-junk entries plus dev-relevant dotfiles.
-    /// Folders whose ≥3 immediate children look like project roots are expanded one level.
-    public static func scanCandidates(
+    /// Top-level scan returning both the flat candidate list and the visible top-level folders.
+    /// - `ScanResult.candidates`: visible non-skipped non-junk entries plus dev-relevant dotfiles;
+    ///   parent folders with ≥3 project-root children are expanded one level (parent dropped).
+    /// - `ScanResult.topLevelFolders`: every visible non-standard, non-junk **directory**
+    ///   (NOT symlinks, NOT files, NOT dotfiles) along with the candidate IDs that live underneath.
+    public static func scan(
         homeURL: URL = URL(fileURLWithPath: NSHomeDirectory(), isDirectory: true),
         fileManager: FileManager = .default
-    ) throws -> [CandidateItem] {
-        var result: [CandidateItem] = []
+    ) throws -> ScanResult {
+        var candidates: [CandidateItem] = []
+        var topLevelFolders: [TopLevelFolder] = []
 
         let visible = try fileManager.contentsOfDirectory(
             at: homeURL,
@@ -73,30 +77,38 @@ public enum HomeScanner: Sendable {
             let isDir = values.isDirectory == true
             let isSymlink = values.isSymbolicLink == true
 
-            if isDir, !isSymlink, let expanded = try? maybeExpandParent(url: url, fileManager: fileManager) {
-                result.append(contentsOf: expanded)
-                continue
-            }
-
-            let stack = (isDir && !isSymlink) ? detectStack(at: url, fileManager: fileManager) : nil
-            let category: CandidateCategory
-            if !isDir {
-                category = .looseFile
-            } else if stack != nil {
-                category = .codeProject
+            if isDir, !isSymlink {
+                if let expanded = try? maybeExpandParent(url: url, fileManager: fileManager) {
+                    candidates.append(contentsOf: expanded)
+                    topLevelFolders.append(TopLevelFolder(url: url, name: name, childIDs: expanded.map(\.id)))
+                    continue
+                }
+                let stack = detectStack(at: url, fileManager: fileManager)
+                let category: CandidateCategory = stack != nil ? .codeProject : .personalData
+                let item = try makeCandidate(
+                    url: url,
+                    name: name,
+                    values: values,
+                    category: category,
+                    stack: stack,
+                    fileManager: fileManager
+                )
+                candidates.append(item)
+                topLevelFolders.append(TopLevelFolder(url: url, name: name, childIDs: [item.id]))
             } else {
-                category = .personalData
+                // Files and symlinks at the top level go to candidates only (Section 4),
+                // not to topLevelFolders (Section 3 is folders only).
+                let category: CandidateCategory = isDir ? .personalData : .looseFile
+                let item = try makeCandidate(
+                    url: url,
+                    name: name,
+                    values: values,
+                    category: category,
+                    stack: nil,
+                    fileManager: fileManager
+                )
+                candidates.append(item)
             }
-
-            let item = try makeCandidate(
-                url: url,
-                name: name,
-                values: values,
-                category: category,
-                stack: stack,
-                fileManager: fileManager
-            )
-            result.append(item)
         }
 
         // Dotfile pass — explicit, since `.skipsHiddenFiles` filtered them out above.
@@ -121,16 +133,26 @@ public enum HomeScanner: Sendable {
                 stack: nil,
                 fileManager: fileManager
             )
-            result.append(item)
+            candidates.append(item)
         }
 
-        result.sort { lhs, rhs in
+        candidates.sort { lhs, rhs in
             if lhs.category != rhs.category {
                 return categoryOrder(lhs.category) < categoryOrder(rhs.category)
             }
             return lhs.name.localizedCaseInsensitiveCompare(rhs.name) == .orderedAscending
         }
-        return result
+        topLevelFolders.sort { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+
+        return ScanResult(candidates: candidates, topLevelFolders: topLevelFolders)
+    }
+
+    /// Backwards-compatible wrapper. Returns only the flat candidate list.
+    public static func scanCandidates(
+        homeURL: URL = URL(fileURLWithPath: NSHomeDirectory(), isDirectory: true),
+        fileManager: FileManager = .default
+    ) throws -> [CandidateItem] {
+        try scan(homeURL: homeURL, fileManager: fileManager).candidates
     }
 
     /// Recursive on-disk size for `~/Pictures`, `~/Music`, or `~/Movies`.

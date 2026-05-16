@@ -4,6 +4,7 @@ import SwiftUI
 
 struct ContentView: View {
     @State private var candidates: [CandidateItem] = []
+    @State private var topLevelFolders: [TopLevelFolder] = []
     @State private var selection: Set<CandidateItem.ID> = []
     @State private var searchText = ""
     @State private var scanError: String?
@@ -20,6 +21,10 @@ struct ContentView: View {
     @State private var sortOrder: [KeyPathComparator<CandidateItem>] = [
         .init(\.sizeBytes, order: .reverse)
     ]
+
+    private var candidatesByID: [CandidateItem.ID: CandidateItem] {
+        Dictionary(uniqueKeysWithValues: candidates.map { ($0.id, $0) })
+    }
 
     private var visibleCandidates: [CandidateItem] {
         let q = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
@@ -73,6 +78,10 @@ struct ContentView: View {
 
             GroupBox("Homebrew") {
                 homebrewSummary
+            }
+
+            GroupBox("Top-level folders in your home (\(topLevelFolders.count))") {
+                topLevelFoldersTable
             }
 
             GroupBox("Items outside usual locations") {
@@ -181,6 +190,97 @@ struct ContentView: View {
         }
     }
 
+    private var topLevelFoldersTable: some View {
+        Group {
+            if topLevelFolders.isEmpty {
+                Text("Scan to populate.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            } else {
+                Table(topLevelFolders) {
+                    TableColumn("") { folder in
+                        Toggle("", isOn: bindingFor(folder))
+                            .toggleStyle(.checkbox)
+                            .labelsHidden()
+                    }
+                    .width(28)
+                    TableColumn("Name") { folder in
+                        HStack(spacing: 6) {
+                            Text(folder.name)
+                            if isPartiallySelected(folder) {
+                                Text("partial")
+                                    .font(.system(size: 9, weight: .bold))
+                                    .padding(.horizontal, 5)
+                                    .padding(.vertical, 1)
+                                    .background(Color.orange.opacity(0.85))
+                                    .foregroundStyle(.white)
+                                    .clipShape(RoundedRectangle(cornerRadius: 3))
+                            }
+                        }
+                    }
+                    TableColumn("Size") { folder in
+                        if isMeasuringFolder(folder) {
+                            HStack(spacing: 4) {
+                                ProgressView().controlSize(.mini)
+                                Text("measuring…")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        } else {
+                            Text(byteString(topLevelSize(folder)))
+                                .font(.system(.body, design: .default).monospacedDigit())
+                        }
+                    }
+                    TableColumn("Contains") { folder in
+                        Text(folder.childIDs.count == 1 ? "1 item" : "\(folder.childIDs.count) items")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    TableColumn("Path") { folder in
+                        Text(folder.url.path)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                    }
+                }
+                .tableStyle(.inset(alternatesRowBackgrounds: true))
+                .frame(minHeight: 160, idealHeight: 220)
+            }
+        }
+    }
+
+    private func bindingFor(_ folder: TopLevelFolder) -> Binding<Bool> {
+        Binding(
+            get: {
+                !folder.childIDs.isEmpty && folder.childIDs.allSatisfy { self.selection.contains($0) }
+            },
+            set: { newValue in
+                if newValue {
+                    self.selection.formUnion(folder.childIDs)
+                } else {
+                    self.selection.subtract(folder.childIDs)
+                }
+            }
+        )
+    }
+
+    private func isPartiallySelected(_ folder: TopLevelFolder) -> Bool {
+        guard !folder.childIDs.isEmpty else { return false }
+        let count = folder.childIDs.reduce(0) { $0 + (selection.contains($1) ? 1 : 0) }
+        return count > 0 && count < folder.childIDs.count
+    }
+
+    private func isMeasuringFolder(_ folder: TopLevelFolder) -> Bool {
+        folder.childIDs.contains { measuringIDs.contains($0) }
+    }
+
+    private func topLevelSize(_ folder: TopLevelFolder) -> Int64 {
+        let lookup = candidatesByID
+        return folder.childIDs.reduce(Int64(0)) { sum, id in sum + (lookup[id]?.sizeBytes ?? 0) }
+    }
+
     private var mediaSizesTable: some View {
         Grid(alignment: .leading, horizontalSpacing: 16, verticalSpacing: 8) {
             ForEach(MediaFolder.allCases, id: \.self) { folder in
@@ -280,18 +380,20 @@ struct ContentView: View {
         measuringIDs = []
         defer { isScanning = false }
         do {
-            let next = try HomeScanner.scanCandidates()
+            let result = try HomeScanner.scan()
             // Reset directory sizes to 0; recursive pass will fill them in.
-            candidates = next.map { $0.isDirectory && !$0.isSymlink ? $0.with(sizeBytes: 0) : $0 }
+            candidates = result.candidates.map { $0.isDirectory && !$0.isSymlink ? $0.with(sizeBytes: 0) : $0 }
+            topLevelFolders = result.topLevelFolders
             selection = []
             measuringIDs = Set(candidates.filter { $0.isDirectory && !$0.isSymlink }.map(\.id))
             let projects = candidates.filter { $0.category == .codeProject }.count
             let configs = candidates.filter { $0.category == .devConfig }.count
-            statusMessage = "Found \(candidates.count) item(s) — \(projects) projects, \(configs) dev configs. Measuring sizes…"
+            statusMessage = "Found \(candidates.count) item(s) under \(topLevelFolders.count) top-level folder(s) — \(projects) projects, \(configs) dev configs. Measuring sizes…"
             startSizeMeasurements()
         } catch {
             scanError = error.localizedDescription
             candidates = []
+            topLevelFolders = []
             selection = []
             measuringIDs = []
         }
