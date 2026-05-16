@@ -175,13 +175,20 @@ public struct TopLevelFolder: Identifiable, Hashable, Sendable {
     /// Candidate IDs that live under this top-level folder. When the parent was expanded these
     /// are the expanded child IDs; otherwise it's a single ID equal to the parent's own.
     public let childIDs: [String]
+    /// Sum of children's recursive sizes. Filled in by the UI as measurements complete so this
+    /// column can be sorted via `KeyPathComparator(\.sizeBytes)`.
+    public var sizeBytes: Int64
 
-    public init(url: URL, name: String, childIDs: [String]) {
+    public init(url: URL, name: String, childIDs: [String], sizeBytes: Int64 = 0) {
         self.url = url
         self.name = name
         self.childIDs = childIDs
+        self.sizeBytes = sizeBytes
         self.id = url.path(percentEncoded: false)
     }
+
+    /// Number of items under this folder (used as a KeyPath sort key for the "Contains" column).
+    public var childCount: Int { childIDs.count }
 }
 
 /// Output of `HomeScanner.scan`: the flat candidate list (used by the existing items table)

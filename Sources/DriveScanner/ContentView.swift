@@ -21,6 +21,9 @@ struct ContentView: View {
     @State private var sortOrder: [KeyPathComparator<CandidateItem>] = [
         .init(\.sizeBytes, order: .reverse)
     ]
+    @State private var topLevelSortOrder: [KeyPathComparator<TopLevelFolder>] = [
+        .init(\.sizeBytes, order: .reverse)
+    ]
 
     private var candidatesByID: [CandidateItem.ID: CandidateItem] {
         Dictionary(uniqueKeysWithValues: candidates.map { ($0.id, $0) })
@@ -198,14 +201,14 @@ struct ContentView: View {
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
             } else {
-                Table(topLevelFolders) {
+                Table(topLevelFolders, sortOrder: $topLevelSortOrder) {
                     TableColumn("") { folder in
                         Toggle("", isOn: bindingFor(folder))
                             .toggleStyle(.checkbox)
                             .labelsHidden()
                     }
                     .width(28)
-                    TableColumn("Name") { folder in
+                    TableColumn("Name", value: \.name) { folder in
                         HStack(spacing: 6) {
                             Text(folder.name)
                             if isPartiallySelected(folder) {
@@ -219,7 +222,7 @@ struct ContentView: View {
                             }
                         }
                     }
-                    TableColumn("Size") { folder in
+                    TableColumn("Size", value: \.sizeBytes) { folder in
                         if isMeasuringFolder(folder) {
                             HStack(spacing: 4) {
                                 ProgressView().controlSize(.mini)
@@ -228,16 +231,16 @@ struct ContentView: View {
                                     .foregroundStyle(.secondary)
                             }
                         } else {
-                            Text(byteString(topLevelSize(folder)))
+                            Text(byteString(folder.sizeBytes))
                                 .font(.system(.body, design: .default).monospacedDigit())
                         }
                     }
-                    TableColumn("Contains") { folder in
+                    TableColumn("Contains", value: \.childCount) { folder in
                         Text(folder.childIDs.count == 1 ? "1 item" : "\(folder.childIDs.count) items")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
-                    TableColumn("Path") { folder in
+                    TableColumn("Path", value: \.url.path) { folder in
                         Text(folder.url.path)
                             .font(.caption)
                             .foregroundStyle(.secondary)
@@ -247,6 +250,9 @@ struct ContentView: View {
                 }
                 .tableStyle(.inset(alternatesRowBackgrounds: true))
                 .frame(minHeight: 160, idealHeight: 220)
+                .onChange(of: topLevelSortOrder) { _, newValue in
+                    topLevelFolders.sort(using: newValue)
+                }
             }
         }
     }
@@ -274,11 +280,6 @@ struct ContentView: View {
 
     private func isMeasuringFolder(_ folder: TopLevelFolder) -> Bool {
         folder.childIDs.contains { measuringIDs.contains($0) }
-    }
-
-    private func topLevelSize(_ folder: TopLevelFolder) -> Int64 {
-        let lookup = candidatesByID
-        return folder.childIDs.reduce(Int64(0)) { sum, id in sum + (lookup[id]?.sizeBytes ?? 0) }
     }
 
     private var mediaSizesTable: some View {
@@ -427,6 +428,21 @@ struct ContentView: View {
         }
         fileNamesByID[id] = measurement.fileNames
         measuringIDs.remove(id)
+
+        // Refresh sizes on any top-level folder that contains this id, then re-sort.
+        let lookup = candidatesByID
+        var touched = false
+        for (fIdx, folder) in topLevelFolders.enumerated() where folder.childIDs.contains(id) {
+            let newSize = folder.childIDs.reduce(Int64(0)) { sum, cid in sum + (lookup[cid]?.sizeBytes ?? 0) }
+            if newSize != folder.sizeBytes {
+                topLevelFolders[fIdx].sizeBytes = newSize
+                touched = true
+            }
+        }
+        if touched {
+            topLevelFolders.sort(using: topLevelSortOrder)
+        }
+
         if measuringIDs.isEmpty {
             statusMessage = "Sizes measured. \(candidates.count) item(s) ready."
         }
