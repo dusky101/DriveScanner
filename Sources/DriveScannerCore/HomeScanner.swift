@@ -136,6 +136,130 @@ public enum HomeScanner: Sendable {
         return TreeWalkResult(rootNodes: rootNodes, truncated: truncated, entriesVisited: visited)
     }
 
+    /// Per-root folder rollups for HTML: depth-1 / depth-2 aggregates and loose (root-level) files.
+    public static func buildFolderRollup(
+        forSelectedURLs roots: [URL],
+        fileManager: FileManager = .default
+    ) throws -> FolderRollupResult {
+        var perRoot: [FolderRollupPerRoot] = []
+
+        for root in roots.sorted(by: { $0.path < $1.path }) {
+            let canonical = rollupCanonicalRoot(root, fileManager: fileManager)
+            var depth1Map: [String: (bytes: Int64, count: Int)] = [:]
+            var depth2Map: [String: (bytes: Int64, count: Int)] = [:]
+            var looseMap: [String: (bytes: Int64, count: Int)] = [:]
+
+            var isDir: ObjCBool = false
+            guard fileManager.fileExists(atPath: canonical.path, isDirectory: &isDir) else {
+                perRoot.append(
+                    FolderRollupPerRoot(
+                        rootURL: root,
+                        rootDisplayName: canonical.lastPathComponent,
+                        depth1: [],
+                        depth2: [],
+                        looseFiles: []
+                    )
+                )
+                continue
+            }
+
+            if !isDir.boolValue {
+                let values = try canonical.resourceValues(forKeys: [
+                    .isRegularFileKey,
+                    .totalFileAllocatedSizeKey,
+                    .fileSizeKey,
+                ])
+                if values.isRegularFile == true {
+                    let b = allocatedBytes(from: values)
+                    let label = canonical.lastPathComponent
+                    looseMap[label] = (b, 1)
+                }
+                perRoot.append(
+                    FolderRollupPerRoot(
+                        rootURL: root,
+                        rootDisplayName: canonical.lastPathComponent,
+                        depth1: [],
+                        depth2: [],
+                        looseFiles: rollupBuckets(from: looseMap)
+                    )
+                )
+                continue
+            }
+
+            let rootPath = rollupNormalizedPath(canonical.path)
+            guard let enumerator = fileManager.enumerator(
+                at: canonical,
+                includingPropertiesForKeys: [
+                    .isRegularFileKey,
+                    .isDirectoryKey,
+                    .totalFileAllocatedSizeKey,
+                    .fileSizeKey,
+                ],
+                options: [.skipsHiddenFiles],
+                errorHandler: { _, _ in true }
+            ) else {
+                perRoot.append(
+                    FolderRollupPerRoot(
+                        rootURL: root,
+                        rootDisplayName: canonical.lastPathComponent,
+                        depth1: [],
+                        depth2: [],
+                        looseFiles: []
+                    )
+                )
+                continue
+            }
+
+            while let url = enumerator.nextObject() as? URL {
+                let name = url.lastPathComponent
+                if isJunkFileName(name) { continue }
+
+                let v = try url.resourceValues(forKeys: [
+                    .isRegularFileKey,
+                    .isDirectoryKey,
+                    .totalFileAllocatedSizeKey,
+                    .fileSizeKey,
+                ])
+                if v.isDirectory == true { continue }
+                if v.isRegularFile != true { continue }
+
+                let bytes = allocatedBytes(from: v)
+                let fullPath = rollupNormalizedPath(url.path)
+                let rel = rollupRelativePath(rootPath: rootPath, fullPath: fullPath)
+                guard !rel.isEmpty else { continue }
+
+                let parts = rel.split(separator: "/").map(String.init)
+                guard let first = parts.first else { continue }
+
+                if parts.count == 1 {
+                    let cur = looseMap[first] ?? (0, 0)
+                    looseMap[first] = (cur.bytes + bytes, cur.count + 1)
+                } else {
+                    let cur1 = depth1Map[first] ?? (0, 0)
+                    depth1Map[first] = (cur1.bytes + bytes, cur1.count + 1)
+
+                    if parts.count >= 3 {
+                        let label2 = "\(parts[0])/\(parts[1])"
+                        let cur2 = depth2Map[label2] ?? (0, 0)
+                        depth2Map[label2] = (cur2.bytes + bytes, cur2.count + 1)
+                    }
+                }
+            }
+
+            perRoot.append(
+                FolderRollupPerRoot(
+                    rootURL: root,
+                    rootDisplayName: canonical.lastPathComponent,
+                    depth1: rollupBuckets(from: depth1Map),
+                    depth2: rollupBuckets(from: depth2Map),
+                    looseFiles: rollupBuckets(from: looseMap)
+                )
+            )
+        }
+
+        return FolderRollupResult(perRoot: perRoot)
+    }
+
     // MARK: - Private
 
     private static func shouldSkipTopLevelCandidate(name: String) -> Bool {
@@ -289,5 +413,42 @@ public enum HomeScanner: Sendable {
 
         visited += 1
         return (FileTreeNode(url: url, name: name, isDirectory: true, children: children), truncated)
+    }
+
+    private static func rollupCanonicalRoot(_ url: URL, fileManager: FileManager) -> URL {
+        let std = url.standardizedFileURL
+        let v = try? std.resourceValues(forKeys: [.isSymbolicLinkKey])
+        if v?.isSymbolicLink == true {
+            return std.resolvingSymlinksInPath().standardizedFileURL
+        }
+        return std
+    }
+
+    private static func rollupNormalizedPath(_ path: String) -> String {
+        var p = path
+        while p.count > 1, p.hasSuffix("/") {
+            p.removeLast()
+        }
+        return p
+    }
+
+    private static func rollupRelativePath(rootPath: String, fullPath: String) -> String {
+        guard fullPath != rootPath else { return "" }
+        guard fullPath.hasPrefix(rootPath) else { return "" }
+        var start = fullPath.index(fullPath.startIndex, offsetBy: rootPath.count)
+        if start < fullPath.endIndex, fullPath[start] == "/" {
+            start = fullPath.index(after: start)
+        }
+        return String(fullPath[start...])
+    }
+
+    private static func rollupBuckets(from map: [String: (bytes: Int64, count: Int)]) -> [FolderRollupBucket] {
+        map.map { label, pair in
+            FolderRollupBucket(label: label, totalBytes: pair.bytes, fileCount: pair.count)
+        }
+        .sorted {
+            if $0.totalBytes != $1.totalBytes { return $0.totalBytes > $1.totalBytes }
+            return $0.label.localizedCaseInsensitiveCompare($1.label) == .orderedAscending
+        }
     }
 }

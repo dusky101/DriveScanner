@@ -1,72 +1,62 @@
 import Foundation
 
-/// Builds a single self-contained HTML file with nested `<details>` trees.
-public enum HTMLReportBuilder: Sendable {
-    public static func buildHTML(
-        title: String,
-        tree: TreeWalkResult,
+/// Builds a single self-contained, user-branded HTML migration report.
+/// Replaces the previous deep file-tree rendering (which truncated at 10,000 entries)
+/// with a summary layout: hero card, KPIs, selected-folders table, per-folder breakdown,
+/// and standard media-folder totals.
+public enum HTMLReportBuilder {
+    public static func buildReport(
+        userContext: UserContext,
+        selectedItems: [CandidateItem],
+        allCandidatesCount: Int,
+        rollup: FolderRollupResult,
+        mediaMeasurements: [MediaFolderMeasurement],
         generatedAt: Date = Date()
     ) -> String {
-        var lines: [String] = []
-        lines.append("<!DOCTYPE html>")
-        lines.append("<html lang=\"en\">")
-        lines.append("<head>")
-        lines.append("<meta charset=\"utf-8\"/>")
-        lines.append("<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"/>")
-        lines.append("<title>\(escape(title))</title>")
-        lines.append(
-            """
-            <style>
-              body { font-family: -apple-system, system-ui, sans-serif; margin: 1.25rem; line-height: 1.35; }
-              h1 { font-size: 1.25rem; }
-              .meta { color: #555; font-size: 0.9rem; margin-bottom: 1rem; }
-              details { margin-left: 0.75rem; border-left: 1px solid #ddd; padding-left: 0.5rem; }
-              summary { cursor: pointer; font-weight: 500; }
-              .file { margin-left: 0.75rem; color: #333; }
-              .warn { color: #a60; font-weight: 600; }
-            </style>
-            """
+        let totalSelectedBytes = selectedItems.reduce(Int64(0)) { $0 + $1.sizeBytes }
+        let mediaTotalBytes = mediaMeasurements.reduce(Int64(0)) { $0 + (($1.exists ? $1.totalBytes : 0)) }
+
+        let dateFormatter = DateFormatter()
+        dateFormatter.dateStyle = .long
+        dateFormatter.timeStyle = .short
+        let generatedLong = dateFormatter.string(from: generatedAt)
+
+        let hero = renderHero(
+            userContext: userContext,
+            selectedCount: selectedItems.count,
+            totalSelectedBytes: totalSelectedBytes,
+            allCandidatesCount: allCandidatesCount,
+            mediaTotalBytes: mediaTotalBytes,
+            generatedLong: generatedLong
         )
-        lines.append("</head>")
-        lines.append("<body>")
-        lines.append("<h1>\(escape(title))</h1>")
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime]
-        let truncatedSuffix =
-            tree.truncated ? " <span class=\"warn\">(truncated)</span>" : ""
-        let generatedEscaped = escape(formatter.string(from: generatedAt))
-        lines.append(
-            "<p class=\"meta\">Generated: \(generatedEscaped) · Entries visited: \(tree.entriesVisited)\(truncatedSuffix)</p>"
-        )
+        let folders = renderFolders(selectedItems)
+        let breakdown = renderBreakdown(rollup)
+        let media = renderMedia(mediaMeasurements)
 
-        if tree.truncated {
-            lines.append(
-                "<p class=\"warn\">Listing was truncated by max depth or max entries. Re-scan with fewer selections or adjust limits in the app.</p>"
-            )
-        }
+        let title = "Migration report — \(userContext.fullName)"
 
-        lines.append("<div class=\"tree\">")
-        for node in tree.rootNodes {
-            appendNode(node, to: &lines, depth: 0)
-        }
-        lines.append("</div>")
-        lines.append("</body>")
-        lines.append("</html>")
-        return lines.joined(separator: "\n")
-    }
-
-    private static func appendNode(_ node: FileTreeNode, to lines: inout [String], depth: Int) {
-        if node.isDirectory {
-            lines.append("<details open>")
-            let summary = escape(node.name) + (node.url.isFileURL ? " <span style=\"color:#888;font-weight:400;\">\(escape(node.url.path))</span>" : "")
-            lines.append("<summary>\(summary)</summary>")
-            for child in node.children {
-                appendNode(child, to: &lines, depth: depth + 1)
-            }
-            lines.append("</details>")
-        } else {
-            lines.append("<div class=\"file\">\(escape(node.name)) — <code>\(escape(node.url.path))</code></div>")
-        }
+        return """
+        <!DOCTYPE html>
+        <html lang="en">
+        <head>
+        <meta charset="utf-8"/>
+        <meta name="viewport" content="width=device-width, initial-scale=1"/>
+        <title>\(escape(title))</title>
+        <style>
+        \(stylesheet)
+        </style>
+        </head>
+        <body>
+        <div class="wrap">
+        \(hero)
+        \(folders)
+        \(breakdown)
+        \(media)
+        <footer>Generated by DriveScanner on \(escape(generatedLong))</footer>
+        </div>
+        </body>
+        </html>
+        """
     }
 
     public static func escape(_ s: String) -> String {
@@ -89,4 +79,360 @@ public enum HTMLReportBuilder: Sendable {
         }
         return out
     }
+
+    // MARK: - Sections
+
+    private static func renderHero(
+        userContext: UserContext,
+        selectedCount: Int,
+        totalSelectedBytes: Int64,
+        allCandidatesCount: Int,
+        mediaTotalBytes: Int64,
+        generatedLong: String
+    ) -> String {
+        let initials = escape(userContext.initials)
+        let fullName = escape(userContext.fullName.isEmpty ? userContext.shortName : userContext.fullName)
+        let subline = escape("\(userContext.shortName)@\(userContext.hostName) · \(userContext.osVersion) · \(generatedLong)")
+        let sizeStr = escape(formatBytes(totalSelectedBytes))
+        let mediaStr = escape(formatBytes(mediaTotalBytes))
+
+        return """
+        <header class="hero">
+          <div class="hero-top">
+            <div class="avatar">\(initials)</div>
+            <div>
+              <h1>\(fullName)</h1>
+              <p class="sub">\(subline)</p>
+            </div>
+          </div>
+          <div class="kpis">
+            <div class="kpi"><span class="kpi-label">Selected to migrate</span><span class="kpi-value">\(selectedCount)</span></div>
+            <div class="kpi"><span class="kpi-label">Total size</span><span class="kpi-value">\(sizeStr)</span></div>
+            <div class="kpi"><span class="kpi-label">Top-level items found</span><span class="kpi-value">\(allCandidatesCount)</span></div>
+            <div class="kpi"><span class="kpi-label">Pictures + Music + Movies</span><span class="kpi-value">\(mediaStr)</span></div>
+          </div>
+        </header>
+        """
+    }
+
+    private static func renderFolders(_ items: [CandidateItem]) -> String {
+        guard !items.isEmpty else {
+            return """
+            <section>
+              <h2>Folders to migrate</h2>
+              <p class="empty">No items selected.</p>
+            </section>
+            """
+        }
+
+        let modFormatter = DateFormatter()
+        modFormatter.dateStyle = .medium
+        modFormatter.timeStyle = .none
+
+        let rows = items
+            .sorted { $0.sizeBytes > $1.sizeBytes }
+            .map { item -> String in
+                let tag: String
+                if item.isSymlink {
+                    tag = " <span class=\"tag tag-warn\">SYMLINK</span>"
+                } else if item.isDirectory {
+                    tag = " <span class=\"tag\">FOLDER</span>"
+                } else {
+                    tag = " <span class=\"tag tag-muted\">FILE</span>"
+                }
+                let modStr = item.modificationDate.map { modFormatter.string(from: $0) } ?? "—"
+                return """
+                <tr>
+                  <td>\(escape(item.name))\(tag)</td>
+                  <td class="path">\(escape(displayPath(item.url)))</td>
+                  <td class="num">\(escape(formatBytes(item.sizeBytes)))</td>
+                  <td>\(escape(modStr))</td>
+                </tr>
+                """
+            }
+            .joined(separator: "\n")
+
+        return """
+        <section>
+          <h2>Folders to migrate</h2>
+          <table>
+            <thead><tr><th>Name</th><th>Path</th><th class="num">Size</th><th>Modified</th></tr></thead>
+            <tbody>
+        \(rows)
+            </tbody>
+          </table>
+        </section>
+        """
+    }
+
+    private static func renderBreakdown(_ rollup: FolderRollupResult) -> String {
+        let nonEmpty = rollup.perRoot.filter { !$0.depth1.isEmpty || !$0.looseFiles.isEmpty }
+        guard !nonEmpty.isEmpty else {
+            return ""
+        }
+
+        let articles = nonEmpty.map { per -> String in
+            let name = escape(per.rootDisplayName)
+            var blocks: [String] = ["<h3>\(name)</h3>"]
+            if !per.depth1.isEmpty {
+                blocks.append(renderBucketTable(title: "Top sub-folders", buckets: per.depth1))
+            }
+            if !per.looseFiles.isEmpty {
+                blocks.append(renderBucketTable(title: "Loose files at root", buckets: per.looseFiles))
+            }
+            return blocks.joined(separator: "\n")
+        }.joined(separator: "\n")
+
+        return """
+        <section>
+          <h2>Inside each folder</h2>
+        \(articles)
+        </section>
+        """
+    }
+
+    private static func renderBucketTable(title: String, buckets: [FolderRollupBucket]) -> String {
+        let rows = buckets.prefix(25).map { bucket -> String in
+            return """
+            <tr>
+              <td>\(escape(bucket.label))</td>
+              <td class="num">\(bucket.fileCount)</td>
+              <td class="num">\(escape(formatBytes(bucket.totalBytes)))</td>
+            </tr>
+            """
+        }.joined(separator: "\n")
+
+        let more = buckets.count > 25
+            ? "<p class=\"muted\" style=\"font-size:0.8rem;margin-top:0.5rem;\">+ \(buckets.count - 25) more not shown</p>"
+            : ""
+
+        return """
+        <p class="bucket-title">\(escape(title))</p>
+        <table>
+          <thead><tr><th>Sub-folder</th><th class="num">Files</th><th class="num">Size</th></tr></thead>
+          <tbody>
+        \(rows)
+          </tbody>
+        </table>
+        \(more)
+        """
+    }
+
+    private static func renderMedia(_ measurements: [MediaFolderMeasurement]) -> String {
+        guard !measurements.isEmpty else { return "" }
+        let rows = measurements.map { m -> String in
+            let sizeCell = m.exists ? escape(formatBytes(m.totalBytes)) : "<span class=\"muted\">not found</span>"
+            return """
+            <tr>
+              <td>\(escape(m.folder.displayLabel))</td>
+              <td class="path">~/\(escape(m.folder.directoryName))</td>
+              <td class="num">\(sizeCell)</td>
+            </tr>
+            """
+        }.joined(separator: "\n")
+
+        return """
+        <section>
+          <h2>Standard media folders</h2>
+          <table>
+            <thead><tr><th>Folder</th><th>Path</th><th class="num">Size</th></tr></thead>
+            <tbody>
+        \(rows)
+            </tbody>
+          </table>
+        </section>
+        """
+    }
+
+    // MARK: - Helpers
+
+    private static func formatBytes(_ bytes: Int64) -> String {
+        ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)
+    }
+
+    private static func displayPath(_ url: URL) -> String {
+        let home = NSHomeDirectory()
+        let p = url.path
+        if p.hasPrefix(home) {
+            return "~" + p.dropFirst(home.count)
+        }
+        return p
+    }
+
+    private static let stylesheet: String = """
+    :root {
+      color-scheme: light dark;
+      --bg: #f5f5f7;
+      --card: #ffffff;
+      --text: #1d1d1f;
+      --muted: #6e6e73;
+      --border: #d2d2d7;
+      --accent: #0071e3;
+      --accent-2: #5e5ce6;
+      --warn: #b25000;
+      --row-alt: #fafafa;
+      --shadow: 0 1px 2px rgba(0,0,0,0.04), 0 2px 8px rgba(0,0,0,0.04);
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #1c1c1e;
+        --card: #2c2c2e;
+        --text: #f5f5f7;
+        --muted: #98989f;
+        --border: #3a3a3c;
+        --accent: #0a84ff;
+        --accent-2: #5e5ce6;
+        --warn: #ff9f0a;
+        --row-alt: #262628;
+        --shadow: 0 1px 2px rgba(0,0,0,0.5), 0 2px 10px rgba(0,0,0,0.35);
+      }
+    }
+    * { box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", system-ui, sans-serif;
+      margin: 0;
+      padding: 2rem clamp(1rem, 5vw, 3rem) 4rem;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.5;
+      font-size: 15px;
+      -webkit-font-smoothing: antialiased;
+    }
+    .wrap { max-width: 1080px; margin: 0 auto; }
+    .hero {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 1.5rem 1.75rem;
+      margin-bottom: 1.5rem;
+      box-shadow: var(--shadow);
+    }
+    .hero-top { display: flex; align-items: center; gap: 1rem; margin-bottom: 1.25rem; }
+    .avatar {
+      width: 56px; height: 56px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, var(--accent), var(--accent-2));
+      color: white;
+      display: flex; align-items: center; justify-content: center;
+      font-weight: 600; font-size: 1.25rem;
+      flex-shrink: 0;
+      letter-spacing: 0.02em;
+    }
+    .hero h1 { margin: 0; font-size: 1.5rem; font-weight: 650; letter-spacing: -0.01em; }
+    .hero .sub { margin: 0.15rem 0 0; color: var(--muted); font-size: 0.9rem; }
+    .kpis {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      gap: 0.75rem;
+    }
+    .kpi {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 0.75rem 0.9rem;
+    }
+    .kpi-label {
+      display: block;
+      color: var(--muted);
+      font-size: 0.7rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 0.2rem;
+    }
+    .kpi-value {
+      display: block;
+      font-size: 1.25rem;
+      font-weight: 600;
+      font-variant-numeric: tabular-nums;
+      letter-spacing: -0.01em;
+    }
+    section {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 1.25rem 1.5rem 1.5rem;
+      margin-bottom: 1.25rem;
+      box-shadow: var(--shadow);
+    }
+    section h2 {
+      font-size: 1.05rem;
+      font-weight: 650;
+      letter-spacing: -0.01em;
+      margin: 0 0 1rem;
+    }
+    section h3 {
+      font-size: 0.95rem;
+      font-weight: 600;
+      margin: 1.5rem 0 0.5rem;
+      color: var(--text);
+    }
+    section h3:first-of-type { margin-top: 0; }
+    .bucket-title {
+      margin: 0.75rem 0 0.35rem;
+      font-size: 0.72rem;
+      font-weight: 600;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .muted { color: var(--muted); }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.875rem;
+    }
+    th, td {
+      padding: 0.55rem 0.65rem;
+      text-align: left;
+      border-bottom: 1px solid var(--border);
+      vertical-align: top;
+    }
+    thead th {
+      font-weight: 600;
+      color: var(--muted);
+      font-size: 0.72rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      border-bottom: 1px solid var(--border);
+    }
+    tbody tr:hover { background: var(--row-alt); }
+    tbody tr:last-child td { border-bottom: none; }
+    td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+    td.path {
+      color: var(--muted);
+      font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+      font-size: 0.78rem;
+      word-break: break-all;
+    }
+    .tag {
+      display: inline-block;
+      padding: 0.1rem 0.45rem;
+      border-radius: 4px;
+      font-size: 0.65rem;
+      font-weight: 700;
+      background: var(--accent);
+      color: white;
+      vertical-align: middle;
+      margin-left: 0.4rem;
+      letter-spacing: 0.04em;
+    }
+    .tag-muted { background: var(--muted); }
+    .tag-warn { background: var(--warn); }
+    .empty {
+      color: var(--muted);
+      font-style: italic;
+      padding: 0.5rem 0;
+    }
+    footer {
+      color: var(--muted);
+      font-size: 0.8rem;
+      text-align: center;
+      margin-top: 1.5rem;
+    }
+    @media print {
+      body { background: white; padding: 1rem; }
+      section, .hero { box-shadow: none; }
+    }
+    """
 }

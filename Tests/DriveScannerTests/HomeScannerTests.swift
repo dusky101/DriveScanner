@@ -90,21 +90,100 @@ struct HTMLReportBuilderTests {
         #expect(HTMLReportBuilder.escape("a & b < c > \" '") == "a &amp; b &lt; c &gt; &quot; &#39;")
     }
 
-    @Test("buildHTML includes escaped title and tree")
-    func buildHTML() throws {
-        let fm = FileManager.default
-        let root = fm.temporaryDirectory.appendingPathComponent("DriveScannerHTML-\(UUID().uuidString)", isDirectory: true)
-        try fm.createDirectory(at: root, withIntermediateDirectories: true)
-        // Filename carries angle brackets so the report must escape displayed names (content is not embedded).
-        let oddName = "prefix<evil>suffix.txt"
-        try "x".write(to: root.appendingPathComponent(oddName), atomically: true, encoding: .utf8)
-        defer { try? fm.removeItem(at: root) }
+    @Test("buildReport renders hero with user name, escaped, and KPI cards")
+    func buildReportHero() {
+        let user = UserContext(
+            fullName: "Ada Lovelace",
+            shortName: "ada",
+            hostName: "ada-mbp",
+            osVersion: "macOS 15.0"
+        )
+        let item = CandidateItem(
+            url: URL(fileURLWithPath: "/Users/ada/Codingapps"),
+            name: "Codingapps",
+            isDirectory: true,
+            isSymlink: false,
+            sizeBytes: 1024,
+            modificationDate: nil
+        )
+        let html = HTMLReportBuilder.buildReport(
+            userContext: user,
+            selectedItems: [item],
+            allCandidatesCount: 5,
+            rollup: FolderRollupResult(perRoot: []),
+            mediaMeasurements: []
+        )
+        #expect(html.contains("Migration report — Ada Lovelace"))
+        #expect(html.contains("<h1>Ada Lovelace</h1>"))
+        #expect(html.contains("<div class=\"avatar\">AL</div>"))
+        #expect(html.contains(">1</span>"))
+        #expect(html.contains("Codingapps"))
+        #expect(html.contains("FOLDER"))
+    }
 
-        let tree = try HomeScanner.buildTree(forSelectedURLs: [root], limits: TreeWalkLimits(maxDepth: 4, maxEntries: 500), fileManager: fm)
-        let html = HTMLReportBuilder.buildHTML(title: "Test <title>", tree: tree)
-        #expect(html.contains("Test &lt;title&gt;"))
-        #expect(html.contains("prefix&lt;evil&gt;suffix.txt"))
-        #expect(html.contains("<details"))
+    @Test("buildReport escapes HTML in fullName")
+    func buildReportEscapesUserName() {
+        let user = UserContext(
+            fullName: "Evil <Name>",
+            shortName: "evil",
+            hostName: "host",
+            osVersion: "macOS 15.0"
+        )
+        let html = HTMLReportBuilder.buildReport(
+            userContext: user,
+            selectedItems: [],
+            allCandidatesCount: 0,
+            rollup: FolderRollupResult(perRoot: []),
+            mediaMeasurements: []
+        )
+        #expect(html.contains("<h1>Evil &lt;Name&gt;</h1>"))
+        #expect(!html.contains("<h1>Evil <Name></h1>"))
+    }
+
+    @Test("buildReport renders per-folder rollup with escaped names")
+    func buildReportRollup() {
+        let user = UserContext(fullName: "Test User", shortName: "test", hostName: "host", osVersion: "macOS 15.0")
+        let rollup = FolderRollupResult(
+            perRoot: [
+                FolderRollupPerRoot(
+                    rootURL: URL(fileURLWithPath: "/tmp/rollup-root"),
+                    rootDisplayName: "A & B < C",
+                    depth1: [FolderRollupBucket(label: "Docs", totalBytes: 100, fileCount: 2)],
+                    depth2: [],
+                    looseFiles: []
+                ),
+            ]
+        )
+        let html = HTMLReportBuilder.buildReport(
+            userContext: user,
+            selectedItems: [],
+            allCandidatesCount: 0,
+            rollup: rollup,
+            mediaMeasurements: []
+        )
+        #expect(html.contains("<h2>Inside each folder</h2>"))
+        #expect(html.contains("<h3>A &amp; B &lt; C</h3>"))
+        #expect(html.contains("Docs"))
+        #expect(!html.contains("<details class=\"tree-wrap\">"))
+    }
+
+    @Test("buildReport renders media folders with bytes or not-found")
+    func buildReportMedia() {
+        let user = UserContext(fullName: "Test User", shortName: "test", hostName: "host", osVersion: "macOS 15.0")
+        let media = [
+            MediaFolderMeasurement(folder: .pictures, exists: true, totalBytes: 2_000_000_000),
+            MediaFolderMeasurement(folder: .movies, exists: false, totalBytes: 0),
+        ]
+        let html = HTMLReportBuilder.buildReport(
+            userContext: user,
+            selectedItems: [],
+            allCandidatesCount: 0,
+            rollup: FolderRollupResult(perRoot: []),
+            mediaMeasurements: media
+        )
+        #expect(html.contains("<h2>Standard media folders</h2>"))
+        #expect(html.contains("Pictures / Photos"))
+        #expect(html.contains("not found"))
     }
 }
 

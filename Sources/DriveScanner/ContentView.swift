@@ -212,8 +212,22 @@ struct ContentView: View {
             isExporting = false
         }
         do {
-            let tree = try HomeScanner.buildTree(forSelectedURLs: selectedURLs)
-            let html = HTMLReportBuilder.buildHTML(title: "Migration selection", tree: tree)
+            let rollup = try HomeScanner.buildFolderRollup(forSelectedURLs: selectedURLs)
+            let selectedItems = candidates.filter { selection.contains($0.id) }
+            let userContext = UserContext(
+                fullName: NSFullUserName(),
+                shortName: NSUserName(),
+                hostName: Host.current().localizedName ?? ProcessInfo.processInfo.hostName,
+                osVersion: ProcessInfo.processInfo.operatingSystemVersionString
+            )
+            let mediaList = MediaFolder.allCases.compactMap { mediaMeasurements[$0] }
+            let html = HTMLReportBuilder.buildReport(
+                userContext: userContext,
+                selectedItems: selectedItems,
+                allCandidatesCount: candidates.count,
+                rollup: rollup,
+                mediaMeasurements: mediaList
+            )
             try html.write(to: url, atomically: true, encoding: .utf8)
             statusMessage = "Saved report to \(url.path)"
         } catch {
