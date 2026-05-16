@@ -89,7 +89,7 @@ public struct ContentView: View {
                 onOpenHomebrew: { showingBrewDetail = true }
             )
 
-            HSplitView {
+            HStack(alignment: .top, spacing: 20) {
                 TopLevelFoldersSection(
                     folders: $topLevelFolders,
                     selection: $selection,
@@ -100,7 +100,7 @@ public struct ContentView: View {
                     selectedCount: topLevelSelectedCount,
                     selectedBytes: selectedTotalBytes
                 )
-                .frame(minWidth: 320, idealWidth: 420)
+                .frame(maxWidth: .infinity)
                 ItemsSection(
                     candidates: $candidates,
                     selection: $selection,
@@ -115,7 +115,7 @@ public struct ContentView: View {
                     selectedCount: selection.count,
                     selectedBytes: selectedTotalBytes
                 )
-                .frame(minWidth: 420, idealWidth: 760)
+                .frame(maxWidth: .infinity)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
 

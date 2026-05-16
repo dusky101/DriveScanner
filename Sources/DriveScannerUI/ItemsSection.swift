@@ -40,25 +40,31 @@ struct ItemsSection: View {
     }
 
     private var headerCard: some View {
-        HStack(spacing: 12) {
-            SectionHeader(
-                icon: "doc.on.doc.fill",
-                title: "Items to migrate",
-                subtitle: subtitle,
-                count: candidates.isEmpty ? nil : visibleCandidates.count,
-                accent: Color(red: 0.10, green: 0.62, blue: 0.34)
-            )
-            SelectionSummary(count: selectedCount, sizeBytes: selectedBytes)
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 12) {
+                SectionHeader(
+                    icon: "doc.on.doc.fill",
+                    title: "Items to migrate",
+                    subtitle: subtitle,
+                    count: candidates.isEmpty ? nil : visibleCandidates.count,
+                    accent: Color(red: 0.10, green: 0.62, blue: 0.34)
+                )
+                SelectionSummary(count: selectedCount, sizeBytes: selectedBytes)
+            }
+            searchAndActions
         }
-        .card()
+        .panelCard()
     }
 
     private var bodyCard: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            searchAndActions
-            content
+        Group {
+            if candidates.isEmpty {
+                EmptyStateView(icon: "magnifyingglass", text: "Scan to populate.")
+            } else {
+                table
+            }
         }
-        .card()
+        .panelCard()
         .frame(maxHeight: .infinity)
     }
 
@@ -124,6 +130,7 @@ struct ItemsSection: View {
                     copiedAt: copyHistoryLookup(item.id)?.copiedAt
                 )
             }
+            .width(min: 220, ideal: 280)
 
             TableColumn("Size", value: \.sizeBytes) { item in
                 ItemSizeCell(
@@ -131,14 +138,14 @@ struct ItemsSection: View {
                     isMeasuring: measuringIDs.contains(item.id)
                 )
             }
-            .width(min: 100, ideal: 120, max: 150)
+            .width(min: 110, ideal: 130, max: 160)
 
             TableColumn("Modified", value: \.modificationSortKey) { item in
                 Text(item.modificationDate.map { $0.formatted(date: .abbreviated, time: .shortened) } ?? "—")
                     .font(.callout)
                     .foregroundStyle(.secondary)
             }
-            .width(min: 130, ideal: 150, max: 200)
+            .width(min: 140, ideal: 160, max: 200)
 
             TableColumn("Path", value: \.url.path) { item in
                 Text(PathFormat.tildeHome(item.url))
@@ -147,6 +154,7 @@ struct ItemsSection: View {
                     .lineLimit(1)
                     .truncationMode(.middle)
             }
+            .width(min: 240, ideal: 320)
         }
         .tableStyle(.inset(alternatesRowBackgrounds: true))
         .frame(minHeight: 200, maxHeight: .infinity)

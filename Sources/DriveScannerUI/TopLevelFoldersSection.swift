@@ -20,17 +20,24 @@ struct TopLevelFoldersSection: View {
     }
 
     private var headerCard: some View {
-        HStack(spacing: 12) {
-            SectionHeader(
-                icon: "house.fill",
-                title: "Top-level folders",
-                subtitle: "Tick to cascade · partial when only some selected",
-                count: folders.isEmpty ? nil : folders.count,
-                accent: Color(red: 0.04, green: 0.50, blue: 0.96)
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 12) {
+                SectionHeader(
+                    icon: "house.fill",
+                    title: "Top-level folders",
+                    subtitle: "Tick to cascade · partial when only some selected",
+                    count: folders.isEmpty ? nil : folders.count,
+                    accent: Color(red: 0.04, green: 0.50, blue: 0.96)
+                )
+                SelectionSummary(count: selectedCount, sizeBytes: selectedBytes)
+            }
+            PanelHint(
+                text: "Tick a folder here to auto-select all its items on the right.",
+                icon: "lightbulb.fill",
+                iconColor: .yellow
             )
-            SelectionSummary(count: selectedCount, sizeBytes: selectedBytes)
         }
-        .card()
+        .panelCard()
     }
 
     private var bodyCard: some View {
@@ -41,7 +48,7 @@ struct TopLevelFoldersSection: View {
                 table
             }
         }
-        .card()
+        .panelCard()
         .frame(maxHeight: .infinity)
     }
 
@@ -58,6 +65,7 @@ struct TopLevelFoldersSection: View {
             TableColumn("Name", value: \.name) { folder in
                 TopLevelNameCell(folder: folder, isPartial: isPartiallySelected(folder))
             }
+            .width(min: 200, ideal: 240)
 
             TableColumn("Size", value: \.sizeBytes) { folder in
                 TopLevelSizeCell(
@@ -65,14 +73,14 @@ struct TopLevelFoldersSection: View {
                     isMeasuring: isMeasuring(folder)
                 )
             }
-            .width(min: 100, ideal: 120, max: 150)
+            .width(min: 110, ideal: 130, max: 160)
 
             TableColumn("Contains", value: \.childCount) { folder in
                 Text("\(folder.childCount) item\(folder.childCount == 1 ? "" : "s")")
                     .font(.callout.monospacedDigit())
                     .foregroundStyle(.secondary)
             }
-            .width(min: 80, ideal: 95, max: 130)
+            .width(min: 90, ideal: 110, max: 140)
         }
         .tableStyle(.inset(alternatesRowBackgrounds: true))
         .frame(minHeight: 200, maxHeight: .infinity)

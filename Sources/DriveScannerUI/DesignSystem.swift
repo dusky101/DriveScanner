@@ -15,10 +15,7 @@ struct CardStyle: ViewModifier {
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                     .fill(Color(nsColor: .controlBackgroundColor))
             )
-            .overlay(
-                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .stroke(Color(nsColor: .separatorColor).opacity(0.55), lineWidth: 1)
-            )
+            .shadow(color: .black.opacity(0.08), radius: 5, x: 0, y: 1)
     }
 }
 
@@ -187,16 +184,10 @@ struct MetricCard: View {
         .background(
             RoundedRectangle(cornerRadius: 10, style: .continuous)
                 .fill(isHovered && action != nil
-                      ? Color(nsColor: .controlAccentColor).opacity(0.06)
+                      ? Color(nsColor: .controlAccentColor).opacity(0.08)
                       : Color(nsColor: .controlBackgroundColor))
         )
-        .overlay(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .stroke(isHovered && action != nil
-                        ? accent.opacity(0.5)
-                        : Color(nsColor: .separatorColor).opacity(0.55),
-                        lineWidth: 1)
-        )
+        .shadow(color: .black.opacity(0.08), radius: 5, x: 0, y: 1)
         .animation(.easeOut(duration: 0.12), value: isHovered)
     }
 }
