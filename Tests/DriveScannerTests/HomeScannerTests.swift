@@ -378,8 +378,8 @@ struct HTMLReportBuilderTests {
         #expect(html.contains("tap &quot;homebrew/cask&quot;"))
     }
 
-    @Test("buildReport embeds file index JSON and sortable/search markup when fileIndex provided")
-    func buildReportFileIndex() {
+    @Test("buildReport renders sortable tables and search-link CTA when searchLinkHref provided")
+    func buildReportSortableAndSearchLink() {
         let user = UserContext(fullName: "Test User", shortName: "test", hostName: "host", osVersion: "macOS 15.0")
         let item = CandidateItem(
             url: URL(fileURLWithPath: "/Users/test/Codingapps"),
@@ -395,16 +395,18 @@ struct HTMLReportBuilderTests {
             rollup: FolderRollupResult(perRoot: []),
             mediaMeasurements: [],
             homebrew: nil,
-            fileIndex: ["~/Codingapps": ["Package.swift", "README.md"]]
+            searchLinkHref: "file-search.html"
         )
-        #expect(html.contains("id=\"file-index\""))
-        #expect(html.contains("Package.swift"))
-        #expect(html.contains("globalSearch"))
         #expect(html.contains("class=\"sortable\""))
+        #expect(html.contains("href=\"file-search.html\""))
+        #expect(html.contains("Open file search"))
+        // No file-index embed in inventory any more
+        #expect(!html.contains("id=\"file-index\""))
+        #expect(!html.contains("globalSearch"))
     }
 
-    @Test("buildReport escapes </ inside embedded JSON to prevent script injection")
-    func buildReportJsonEscape() {
+    @Test("buildReport omits search CTA when no searchLinkHref")
+    func buildReportNoSearchLink() {
         let user = UserContext(fullName: "Test User", shortName: "test", hostName: "host", osVersion: "macOS 15.0")
         let html = HTMLReportBuilder.buildReport(
             userContext: user,
@@ -412,15 +414,10 @@ struct HTMLReportBuilderTests {
             excludedItems: [],
             rollup: FolderRollupResult(perRoot: []),
             mediaMeasurements: [],
-            homebrew: nil,
-            fileIndex: ["evil": ["</script><img>"]]
+            homebrew: nil
         )
-        // The literal closing-script sequence inside the JSON must be escaped.
-        let jsonStart = html.range(of: "id=\"file-index\"")!
-        let afterJson = html[jsonStart.upperBound...]
-        let firstScriptClose = afterJson.range(of: "</script>")!
-        let jsonPayload = afterJson[..<firstScriptClose.lowerBound]
-        #expect(!jsonPayload.contains("</script"))
+        #expect(!html.contains("Open file search"))
+        #expect(!html.contains("file-search.html"))
     }
 
     @Test("buildReport renders media folders with bytes or not-found")
@@ -441,6 +438,51 @@ struct HTMLReportBuilderTests {
         #expect(html.contains("Standard media folders"))
         #expect(html.contains("Pictures / Photos"))
         #expect(html.contains("not found"))
+    }
+}
+
+@Suite("FileSearchHTMLBuilder")
+struct FileSearchHTMLBuilderTests {
+    @Test("buildSearchPage renders standalone HTML with input, index JSON and back-link")
+    func basics() {
+        let user = UserContext(fullName: "Ada Lovelace", shortName: "ada", hostName: "ada-mbp", osVersion: "macOS 15.0")
+        let html = FileSearchHTMLBuilder.buildSearchPage(
+            userContext: user,
+            fileIndex: ["~/Codingapps/DriveScanner": ["Package.swift", "README.md"]],
+            inventoryLinkHref: "inventory.html"
+        )
+        #expect(html.contains("<title>File search — Ada Lovelace</title>"))
+        #expect(html.contains("<input id=\"q\""))
+        #expect(html.contains("id=\"file-index\""))
+        #expect(html.contains("Package.swift"))
+        #expect(html.contains("href=\"inventory.html\""))
+        // Indexed counts shown
+        #expect(html.contains("<strong>2</strong>"))
+        #expect(html.contains("<strong>1</strong>"))
+    }
+
+    @Test("buildSearchPage escapes </script> inside embedded JSON")
+    func jsonEscape() {
+        let user = UserContext(fullName: "Test", shortName: "test", hostName: "host", osVersion: "macOS 15.0")
+        let html = FileSearchHTMLBuilder.buildSearchPage(
+            userContext: user,
+            fileIndex: ["evil": ["</script><img src=x onerror=alert(1)>"]]
+        )
+        // Slice out the JSON payload between the opening file-index tag and the closing </script>.
+        let openRange = html.range(of: "id=\"file-index\"")!
+        let afterOpen = html[openRange.upperBound...]
+        let closeRange = afterOpen.range(of: "</script>")!
+        let payload = afterOpen[..<closeRange.lowerBound]
+        #expect(!payload.contains("</script"))
+        #expect(!payload.contains("</"))
+    }
+
+    @Test("buildSearchPage handles empty index gracefully")
+    func emptyIndex() {
+        let user = UserContext(fullName: "Test", shortName: "test", hostName: "host", osVersion: "macOS 15.0")
+        let html = FileSearchHTMLBuilder.buildSearchPage(userContext: user, fileIndex: [:])
+        #expect(html.contains("<strong>0</strong>"))
+        #expect(html.contains("id=\"file-index\""))
     }
 }
 

@@ -369,19 +369,33 @@ struct ContentView: View {
         return index
     }
 
-    private func buildCurrentHtmlReport(selected: [CandidateItem], excluded: [CandidateItem], userContext: UserContext) throws -> String {
+    /// Builds both the inventory HTML and the dedicated file-search page. The inventory carries
+    /// a link to `searchLinkHref` (which the caller chooses based on the on-disk file name).
+    private func buildCurrentHtmlPair(
+        selected: [CandidateItem],
+        excluded: [CandidateItem],
+        userContext: UserContext,
+        inventoryLinkHref: String,
+        searchLinkHref: String
+    ) throws -> (inventory: String, fileSearch: String) {
         let rollup = try HomeScanner.buildFolderRollup(forSelectedURLs: selected.map(\.url))
         let mediaList = MediaFolder.allCases.compactMap { mediaMeasurements[$0] }
         let fileIndex = buildFileIndex(for: selected)
-        return HTMLReportBuilder.buildReport(
+        let inventory = HTMLReportBuilder.buildReport(
             userContext: userContext,
             selectedItems: selected,
             excludedItems: excluded,
             rollup: rollup,
             mediaMeasurements: mediaList,
             homebrew: homebrewInfo,
-            fileIndex: fileIndex
+            searchLinkHref: fileIndex.isEmpty ? nil : searchLinkHref
         )
+        let fileSearch = FileSearchHTMLBuilder.buildSearchPage(
+            userContext: userContext,
+            fileIndex: fileIndex,
+            inventoryLinkHref: inventoryLinkHref
+        )
+        return (inventory, fileSearch)
     }
 
     private func saveHTMLReport() {
@@ -404,13 +418,30 @@ struct ContentView: View {
         do {
             let selectedItems = candidates.filter { selection.contains($0.id) }
             let excludedItems = candidates.filter { !selection.contains($0.id) }
-            let html = try buildCurrentHtmlReport(
+
+            // Compute sibling file-search.html path: "<base>-search.html" next to "<base>.html".
+            let baseName = url.deletingPathExtension().lastPathComponent
+            let parent = url.deletingLastPathComponent()
+            let searchURL = parent.appendingPathComponent("\(baseName)-search.html")
+            let inventoryHref = url.lastPathComponent
+            let searchHref = searchURL.lastPathComponent
+
+            let pair = try buildCurrentHtmlPair(
                 selected: selectedItems,
                 excluded: excludedItems,
-                userContext: currentUserContext()
+                userContext: currentUserContext(),
+                inventoryLinkHref: inventoryHref,
+                searchLinkHref: searchHref
             )
-            try html.write(to: url, atomically: true, encoding: .utf8)
-            statusMessage = "Saved report to \(url.path)"
+            try pair.inventory.write(to: url, atomically: true, encoding: .utf8)
+            // Only write the search page if we have something to index.
+            let hasFiles = !buildFileIndex(for: selectedItems).isEmpty
+            if hasFiles {
+                try pair.fileSearch.write(to: searchURL, atomically: true, encoding: .utf8)
+                statusMessage = "Saved \(url.lastPathComponent) and \(searchURL.lastPathComponent) to \(parent.path)"
+            } else {
+                statusMessage = "Saved report to \(url.path)"
+            }
         } catch {
             statusMessage = "HTML export failed: \(error.localizedDescription)"
         }
@@ -441,12 +472,15 @@ struct ContentView: View {
         }
 
         do {
-            let html = try buildCurrentHtmlReport(
+            let pair = try buildCurrentHtmlPair(
                 selected: selectedItems,
                 excluded: excludedItems,
-                userContext: userContext
+                userContext: userContext,
+                inventoryLinkHref: "inventory.html",
+                searchLinkHref: "file-search.html"
             )
             let brewfile = (homebrewInfo?.isEmpty == false) ? homebrewInfo?.brewfile : nil
+            let hasFileSearch = !buildFileIndex(for: selectedItems).isEmpty
 
             statusMessage = "Copying \(selectedItems.count) item(s)…"
             let result = try await BundleBuilder.build(
@@ -454,7 +488,8 @@ struct ContentView: View {
                 selectedItems: selectedItems,
                 homeURL: homeURL,
                 userContext: userContext,
-                htmlReport: html,
+                htmlReport: pair.inventory,
+                fileSearchHtml: hasFileSearch ? pair.fileSearch : nil,
                 brewfile: brewfile
             ) { progress in
                 Task { @MainActor in

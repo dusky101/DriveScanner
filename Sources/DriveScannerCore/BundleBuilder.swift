@@ -65,6 +65,7 @@ public enum BundleBuilder: Sendable {
         homeURL: URL,
         userContext: UserContext,
         htmlReport: String,
+        fileSearchHtml: String? = nil,
         brewfile: String?,
         generatedAt: Date = Date(),
         fileManager: FileManager = .default,
@@ -113,10 +114,20 @@ public enum BundleBuilder: Sendable {
         try restoreText.write(to: restoreURL, atomically: true, encoding: .utf8)
         try fileManager.setAttributes([.posixPermissions: NSNumber(value: 0o755)], ofItemAtPath: restoreURL.path)
 
-        let readme = renderReadme(userContext: userContext, generatedAt: generatedAt, itemCount: plan.count, hasBrewfile: brewfile != nil)
+        let readme = renderReadme(
+            userContext: userContext,
+            generatedAt: generatedAt,
+            itemCount: plan.count,
+            hasBrewfile: brewfile != nil,
+            hasFileSearch: fileSearchHtml != nil
+        )
         try readme.write(to: bundleURL.appendingPathComponent("README.txt"), atomically: true, encoding: .utf8)
 
         try htmlReport.write(to: bundleURL.appendingPathComponent("inventory.html"), atomically: true, encoding: .utf8)
+
+        if let fileSearchHtml {
+            try fileSearchHtml.write(to: bundleURL.appendingPathComponent("file-search.html"), atomically: true, encoding: .utf8)
+        }
 
         if let brewfile {
             try brewfile.write(to: bundleURL.appendingPathComponent("Brewfile"), atomically: true, encoding: .utf8)
@@ -286,13 +297,14 @@ public enum BundleBuilder: Sendable {
 
     // MARK: - README
 
-    static func renderReadme(userContext: UserContext, generatedAt: Date, itemCount: Int, hasBrewfile: Bool) -> String {
+    static func renderReadme(userContext: UserContext, generatedAt: Date, itemCount: Int, hasBrewfile: Bool, hasFileSearch: Bool = false) -> String {
         let dateFormatter = DateFormatter()
         dateFormatter.dateStyle = .long
         dateFormatter.timeStyle = .short
         dateFormatter.locale = Locale(identifier: "en_GB")
         let dateStr = dateFormatter.string(from: generatedAt)
-        let brewLine = hasBrewfile ? "  Brewfile        - your Homebrew packages (formulae, casks, taps)\n" : ""
+        let brewLine = hasBrewfile ? "  Brewfile          - your Homebrew packages (formulae, casks, taps)\n" : ""
+        let searchLine = hasFileSearch ? "  file-search.html  - in-browser search across every file name in the bundle\n" : ""
         return """
         DriveScanner migration bundle
         =============================
@@ -304,12 +316,12 @@ public enum BundleBuilder: Sendable {
 
         Contents
         --------
-          README.txt      - this file
-          inventory.html  - open in a browser for a full readable report
-          manifest.tsv    - tab-separated item list used by restore.sh
-          restore.sh      - run this on the new Mac to restore
-          data/           - your selected folders and files (mirrors $HOME/...)
-          dotfiles/       - your developer configs (.claude, .ssh, .vscode, etc.)
+          README.txt        - this file
+          inventory.html    - open in a browser for a full readable report
+        \(searchLine)  manifest.tsv      - tab-separated item list used by restore.sh
+          restore.sh        - run this on the new Mac to restore
+          data/             - your selected folders and files (mirrors $HOME/...)
+          dotfiles/         - your developer configs (.claude, .ssh, .vscode, etc.)
         \(brewLine)
         To restore on the new Mac
         -------------------------
