@@ -15,16 +15,29 @@ struct ContentView: View {
     @State private var statusMessage = ""
     @State private var isExporting = false
     @State private var showingBundleSheet = false
+    @State private var measuringIDs: Set<CandidateItem.ID> = []
+    @State private var fileNamesByID: [CandidateItem.ID: [String]] = [:]
+    @State private var sortOrder: [KeyPathComparator<CandidateItem>] = [
+        .init(\.sizeBytes, order: .reverse)
+    ]
 
     private var visibleCandidates: [CandidateItem] {
-        let q = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let q = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         guard !q.isEmpty else { return candidates }
-        return candidates.filter { $0.name.localizedCaseInsensitiveContains(q) }
+        return candidates.filter { item in
+            if item.name.lowercased().contains(q) { return true }
+            if let names = fileNamesByID[item.id] {
+                return names.contains { $0.lowercased().contains(q) }
+            }
+            return false
+        }
     }
 
     private var selectedURLs: [URL] {
         candidates.filter { selection.contains($0.id) }.map(\.url)
     }
+
+    private var isMeasuring: Bool { !measuringIDs.isEmpty }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -36,6 +49,14 @@ struct ContentView: View {
                 if isScanning {
                     ProgressView()
                         .controlSize(.small)
+                }
+                if isMeasuring {
+                    HStack(spacing: 6) {
+                        ProgressView().controlSize(.small)
+                        Text("Measuring sizes… \(candidates.count - measuringIDs.count)/\(candidates.filter { $0.isDirectory && !$0.isSymlink }.count)")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
                 }
                 Spacer()
             }
@@ -57,7 +78,7 @@ struct ContentView: View {
             GroupBox("Items outside usual locations") {
                 VStack(alignment: .leading, spacing: 8) {
                     HStack {
-                        TextField("Filter by name", text: $searchText)
+                        TextField("Search by folder name or any file inside…", text: $searchText)
                             .textFieldStyle(.roundedBorder)
                         Button("Select all visible") {
                             selection.formUnion(visibleCandidates.map(\.id))
@@ -68,8 +89,8 @@ struct ContentView: View {
                         }
                         .disabled(visibleCandidates.isEmpty || isExporting)
                     }
-                    Table(visibleCandidates, selection: $selection) {
-                        TableColumn("Name") { item in
+                    Table(visibleCandidates, selection: $selection, sortOrder: $sortOrder) {
+                        TableColumn("Name", value: \.name) { item in
                             VStack(alignment: .leading, spacing: 2) {
                                 HStack(spacing: 4) {
                                     Text(item.name)
@@ -85,13 +106,22 @@ struct ContentView: View {
                                 }
                             }
                         }
-                        TableColumn("Size") { item in
-                            Text(byteString(item.sizeBytes))
+                        TableColumn("Size", value: \.sizeBytes) { item in
+                            if measuringIDs.contains(item.id) {
+                                HStack(spacing: 4) {
+                                    ProgressView().controlSize(.mini)
+                                    Text("measuring…")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                            } else {
+                                Text(byteString(item.sizeBytes))
+                            }
                         }
-                        TableColumn("Modified") { item in
+                        TableColumn("Modified", value: \.modificationSortKey) { item in
                             Text(item.modificationDate.map { $0.formatted(date: .abbreviated, time: .shortened) } ?? "—")
                         }
-                        TableColumn("Path") { item in
+                        TableColumn("Path", value: \.url.path) { item in
                             Text(item.url.path)
                                 .font(.caption)
                                 .lineLimit(1)
@@ -99,15 +129,23 @@ struct ContentView: View {
                         }
                     }
                     .tableStyle(.inset(alternatesRowBackgrounds: true))
+                    .onChange(of: sortOrder) { _, newValue in
+                        candidates.sort(using: newValue)
+                    }
                 }
             }
 
             HStack(spacing: 10) {
                 Button("Save HTML report…") { saveHTMLReport() }
-                    .disabled(selectedURLs.isEmpty || isExporting)
+                    .disabled(selectedURLs.isEmpty || isExporting || isMeasuring)
                 Button("Create migration bundle…") { showingBundleSheet = true }
-                    .disabled(selectedURLs.isEmpty || isExporting)
+                    .disabled(selectedURLs.isEmpty || isExporting || isMeasuring)
                     .buttonStyle(.borderedProminent)
+                if isMeasuring && !selectedURLs.isEmpty {
+                    Text("Waiting for size measurement…")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             }
 
             if isExporting {
@@ -238,22 +276,57 @@ struct ContentView: View {
         scanError = nil
         isScanning = true
         statusMessage = ""
+        fileNamesByID = [:]
+        measuringIDs = []
         defer { isScanning = false }
         do {
             let next = try HomeScanner.scanCandidates()
-            candidates = next
+            // Reset directory sizes to 0; recursive pass will fill them in.
+            candidates = next.map { $0.isDirectory && !$0.isSymlink ? $0.with(sizeBytes: 0) : $0 }
             selection = []
-            let projects = next.filter { $0.category == .codeProject }.count
-            let configs = next.filter { $0.category == .devConfig }.count
-            statusMessage = "Found \(next.count) item(s) — \(projects) projects, \(configs) dev configs."
+            measuringIDs = Set(candidates.filter { $0.isDirectory && !$0.isSymlink }.map(\.id))
+            let projects = candidates.filter { $0.category == .codeProject }.count
+            let configs = candidates.filter { $0.category == .devConfig }.count
+            statusMessage = "Found \(candidates.count) item(s) — \(projects) projects, \(configs) dev configs. Measuring sizes…"
+            startSizeMeasurements()
         } catch {
             scanError = error.localizedDescription
             candidates = []
             selection = []
+            measuringIDs = []
         }
         await measureMediaFoldersInitial()
         if homebrewInfo == nil {
             await loadHomebrew()
+        }
+    }
+
+    /// Kicks off a parallel recursive measurement for every directory candidate.
+    /// Updates `candidates` and `fileNamesByID` as each completes; clears `measuringIDs` when done.
+    private func startSizeMeasurements() {
+        let toMeasure = candidates.filter { $0.isDirectory && !$0.isSymlink }
+        for item in toMeasure {
+            let id = item.id
+            let url = item.url
+            Task.detached(priority: .userInitiated) {
+                let result = HomeScanner.measureDirectory(url)
+                await MainActor.run {
+                    applyMeasurement(id: id, measurement: result)
+                }
+            }
+        }
+    }
+
+    @MainActor
+    private func applyMeasurement(id: CandidateItem.ID, measurement: DirectoryMeasurement) {
+        if let idx = candidates.firstIndex(where: { $0.id == id }) {
+            candidates[idx] = candidates[idx].with(sizeBytes: measurement.totalBytes)
+            candidates.sort(using: sortOrder)
+        }
+        fileNamesByID[id] = measurement.fileNames
+        measuringIDs.remove(id)
+        if measuringIDs.isEmpty {
+            statusMessage = "Sizes measured. \(candidates.count) item(s) ready."
         }
     }
 
@@ -278,16 +351,36 @@ struct ContentView: View {
         )
     }
 
+    /// Builds the file-index dict expected by HTMLReportBuilder: path-under-~/ → leaf file names.
+    private func buildFileIndex(for items: [CandidateItem]) -> [String: [String]] {
+        let homePath = NSHomeDirectory()
+        var index: [String: [String]] = [:]
+        for item in items {
+            guard let names = fileNamesByID[item.id], !names.isEmpty else { continue }
+            let key: String
+            if item.url.path.hasPrefix(homePath) {
+                let rel = String(item.url.path.dropFirst(homePath.count))
+                key = "~" + (rel.hasPrefix("/") ? rel : "/" + rel)
+            } else {
+                key = item.url.path
+            }
+            index[key] = names
+        }
+        return index
+    }
+
     private func buildCurrentHtmlReport(selected: [CandidateItem], excluded: [CandidateItem], userContext: UserContext) throws -> String {
         let rollup = try HomeScanner.buildFolderRollup(forSelectedURLs: selected.map(\.url))
         let mediaList = MediaFolder.allCases.compactMap { mediaMeasurements[$0] }
+        let fileIndex = buildFileIndex(for: selected)
         return HTMLReportBuilder.buildReport(
             userContext: userContext,
             selectedItems: selected,
             excludedItems: excluded,
             rollup: rollup,
             mediaMeasurements: mediaList,
-            homebrew: homebrewInfo
+            homebrew: homebrewInfo,
+            fileIndex: fileIndex
         )
     }
 
@@ -335,8 +428,6 @@ struct ContentView: View {
         let homeURL = URL(fileURLWithPath: NSHomeDirectory(), isDirectory: true)
         let fm = FileManager.default
 
-        // For archive formats, build in temp, then archive into destination.
-        // For folder format, build directly under destination.
         let workingDir: URL
         let isTemp: Bool
         if config.format == .folder {

@@ -276,6 +276,59 @@ public enum HomeScanner: Sendable {
         return FolderRollupResult(perRoot: perRoot)
     }
 
+    /// Recursively measures `url` and collects up to `fileNameLimit` leaf file names.
+    /// Used after the initial fast scan to replace the misleading shallow sizes with accurate totals
+    /// and to populate the "find any file" index (in-app filter + HTML search).
+    public static func measureDirectory(
+        _ url: URL,
+        fileNameLimit: Int = 50_000,
+        fileManager: FileManager = .default
+    ) -> DirectoryMeasurement {
+        var isDir: ObjCBool = false
+        guard fileManager.fileExists(atPath: url.path, isDirectory: &isDir) else {
+            return DirectoryMeasurement(url: url, totalBytes: 0, fileNames: [], truncated: false)
+        }
+        if !isDir.boolValue {
+            let v = try? url.resourceValues(forKeys: [.totalFileAllocatedSizeKey, .fileSizeKey])
+            let bytes: Int64 = v.map(allocatedBytes(from:)) ?? 0
+            return DirectoryMeasurement(url: url, totalBytes: bytes, fileNames: [url.lastPathComponent], truncated: false)
+        }
+
+        guard let enumerator = fileManager.enumerator(
+            at: url,
+            includingPropertiesForKeys: [
+                .isRegularFileKey, .isDirectoryKey,
+                .totalFileAllocatedSizeKey, .fileSizeKey,
+            ],
+            options: [],
+            errorHandler: { _, _ in true }
+        ) else {
+            return DirectoryMeasurement(url: url, totalBytes: 0, fileNames: [], truncated: false)
+        }
+
+        var total: Int64 = 0
+        var fileNames: [String] = []
+        fileNames.reserveCapacity(min(1024, fileNameLimit))
+        var truncated = false
+
+        while let item = enumerator.nextObject() as? URL {
+            let name = item.lastPathComponent
+            if isJunkFileName(name) { continue }
+            guard let v = try? item.resourceValues(forKeys: [
+                .isRegularFileKey, .isDirectoryKey,
+                .totalFileAllocatedSizeKey, .fileSizeKey,
+            ]) else { continue }
+            if v.isDirectory == true { continue }
+            total += allocatedBytes(from: v)
+            if fileNames.count < fileNameLimit {
+                fileNames.append(name)
+            } else {
+                truncated = true
+            }
+        }
+        return DirectoryMeasurement(url: url, totalBytes: total, fileNames: fileNames, truncated: truncated)
+    }
+
     /// Returns the detected stack if the URL is a project root, else nil.
     public static func detectStack(at url: URL, fileManager: FileManager = .default) -> CodeStack? {
         let path = url.path

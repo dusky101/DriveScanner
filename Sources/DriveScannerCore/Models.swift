@@ -116,6 +116,41 @@ public struct CandidateItem: Identifiable, Hashable, Sendable {
         self.stack = stack
         self.id = url.path(percentEncoded: false)
     }
+
+    /// Returns a copy with a new `sizeBytes`. Used to update items after recursive measurement.
+    public func with(sizeBytes: Int64) -> CandidateItem {
+        CandidateItem(
+            url: url,
+            name: name,
+            isDirectory: isDirectory,
+            isSymlink: isSymlink,
+            sizeBytes: sizeBytes,
+            modificationDate: modificationDate,
+            category: category,
+            stack: stack
+        )
+    }
+
+    /// Sort key for "Modified" column so SwiftUI Table can sort optional dates.
+    public var modificationSortKey: Date {
+        modificationDate ?? .distantPast
+    }
+}
+
+/// Result of recursively walking a directory: total bytes plus a capped list of leaf file names
+/// (used for in-app and in-HTML "search anywhere" features).
+public struct DirectoryMeasurement: Sendable {
+    public let url: URL
+    public let totalBytes: Int64
+    public let fileNames: [String]
+    public let truncated: Bool
+
+    public init(url: URL, totalBytes: Int64, fileNames: [String], truncated: Bool) {
+        self.url = url
+        self.totalBytes = totalBytes
+        self.fileNames = fileNames
+        self.truncated = truncated
+    }
 }
 
 public struct MediaFolderMeasurement: Sendable {

@@ -159,6 +159,40 @@ struct HomeScannerTests {
         #expect(m.totalBytes == 0)
     }
 
+    @Test("measureDirectory recurses and reports accurate bytes plus leaf file names")
+    func measureDirectoryRecursive() throws {
+        let fm = FileManager.default
+        let root = fm.temporaryDirectory.appendingPathComponent("DriveScannerMeasure-\(UUID().uuidString)", isDirectory: true)
+        try fm.createDirectory(at: root.appendingPathComponent("a/b/c", isDirectory: true), withIntermediateDirectories: true)
+        defer { try? fm.removeItem(at: root) }
+
+        try Data(repeating: 1, count: 1000).write(to: root.appendingPathComponent("top.bin"))
+        try Data(repeating: 2, count: 2000).write(to: root.appendingPathComponent("a/mid.bin"))
+        try Data(repeating: 3, count: 5000).write(to: root.appendingPathComponent("a/b/c/deep.bin"))
+
+        let m = HomeScanner.measureDirectory(root)
+        #expect(m.totalBytes >= 1000 + 2000 + 5000, "Expected ≥8000 bytes, got \(m.totalBytes)")
+        let names = Set(m.fileNames)
+        #expect(names.contains("top.bin"))
+        #expect(names.contains("mid.bin"))
+        #expect(names.contains("deep.bin"))
+        #expect(m.truncated == false)
+    }
+
+    @Test("measureDirectory caps file names at fileNameLimit and marks truncated")
+    func measureDirectoryTruncates() throws {
+        let fm = FileManager.default
+        let root = fm.temporaryDirectory.appendingPathComponent("DriveScannerCap-\(UUID().uuidString)", isDirectory: true)
+        try fm.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? fm.removeItem(at: root) }
+        for i in 0..<20 {
+            try "x".write(to: root.appendingPathComponent("f\(i).txt"), atomically: true, encoding: .utf8)
+        }
+        let m = HomeScanner.measureDirectory(root, fileNameLimit: 5)
+        #expect(m.fileNames.count == 5)
+        #expect(m.truncated == true)
+    }
+
     @Test("measureMediaFolderSync sums file bytes under folder")
     func mediaRecursiveSize() throws {
         let fm = FileManager.default
@@ -342,6 +376,51 @@ struct HTMLReportBuilderTests {
         #expect(html.contains("/opt/homebrew/bin/brew"))
         #expect(html.contains("brew bundle --file=&quot;Brewfile&quot;"))
         #expect(html.contains("tap &quot;homebrew/cask&quot;"))
+    }
+
+    @Test("buildReport embeds file index JSON and sortable/search markup when fileIndex provided")
+    func buildReportFileIndex() {
+        let user = UserContext(fullName: "Test User", shortName: "test", hostName: "host", osVersion: "macOS 15.0")
+        let item = CandidateItem(
+            url: URL(fileURLWithPath: "/Users/test/Codingapps"),
+            name: "Codingapps",
+            isDirectory: true, isSymlink: false,
+            sizeBytes: 100, modificationDate: nil,
+            category: .personalData
+        )
+        let html = HTMLReportBuilder.buildReport(
+            userContext: user,
+            selectedItems: [item],
+            excludedItems: [],
+            rollup: FolderRollupResult(perRoot: []),
+            mediaMeasurements: [],
+            homebrew: nil,
+            fileIndex: ["~/Codingapps": ["Package.swift", "README.md"]]
+        )
+        #expect(html.contains("id=\"file-index\""))
+        #expect(html.contains("Package.swift"))
+        #expect(html.contains("globalSearch"))
+        #expect(html.contains("class=\"sortable\""))
+    }
+
+    @Test("buildReport escapes </ inside embedded JSON to prevent script injection")
+    func buildReportJsonEscape() {
+        let user = UserContext(fullName: "Test User", shortName: "test", hostName: "host", osVersion: "macOS 15.0")
+        let html = HTMLReportBuilder.buildReport(
+            userContext: user,
+            selectedItems: [],
+            excludedItems: [],
+            rollup: FolderRollupResult(perRoot: []),
+            mediaMeasurements: [],
+            homebrew: nil,
+            fileIndex: ["evil": ["</script><img>"]]
+        )
+        // The literal closing-script sequence inside the JSON must be escaped.
+        let jsonStart = html.range(of: "id=\"file-index\"")!
+        let afterJson = html[jsonStart.upperBound...]
+        let firstScriptClose = afterJson.range(of: "</script>")!
+        let jsonPayload = afterJson[..<firstScriptClose.lowerBound]
+        #expect(!jsonPayload.contains("</script"))
     }
 
     @Test("buildReport renders media folders with bytes or not-found")
