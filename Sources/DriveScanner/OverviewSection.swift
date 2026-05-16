@@ -6,6 +6,7 @@ struct OverviewSection: View {
     let mediaLoading: Set<MediaFolder>
     let homebrewInfo: HomebrewInfo?
     let brewLoading: Bool
+    let onOpenHomebrew: () -> Void
 
     private let columns: [GridItem] = [
         GridItem(.adaptive(minimum: 170, maximum: 320), spacing: 10),
@@ -43,9 +44,15 @@ struct OverviewSection: View {
                 value: brewValue,
                 subtitle: brewSubtitle,
                 isLoading: brewLoading,
-                accent: Color(red: 0.74, green: 0.48, blue: 0.30)
+                accent: Color(red: 0.74, green: 0.48, blue: 0.30),
+                action: brewIsOpenable ? onOpenHomebrew : nil
             )
         }
+    }
+
+    private var brewIsOpenable: Bool {
+        guard let info = homebrewInfo else { return false }
+        return !info.isEmpty
     }
 
     private func mediaValue(_ folder: MediaFolder) -> String {

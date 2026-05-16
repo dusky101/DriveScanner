@@ -128,8 +128,23 @@ struct MetricCard: View {
     var subtitle: String? = nil
     var isLoading: Bool = false
     var accent: Color = .accentColor
+    var action: (() -> Void)? = nil
+
+    @State private var isHovered = false
 
     var body: some View {
+        if let action {
+            Button(action: action) {
+                cardContent
+            }
+            .buttonStyle(.plain)
+            .onHover { isHovered = $0 }
+        } else {
+            cardContent
+        }
+    }
+
+    private var cardContent: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 6) {
                 Image(systemName: icon)
@@ -140,6 +155,11 @@ struct MetricCard: View {
                     .tracking(0.6)
                     .foregroundStyle(.secondary)
                 Spacer(minLength: 0)
+                if action != nil {
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundStyle(accent.opacity(isHovered ? 1.0 : 0.45))
+                }
             }
             if isLoading {
                 ProgressView()
@@ -164,12 +184,18 @@ struct MetricCard: View {
         .padding(.horizontal, 14)
         .background(
             RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(Color(nsColor: .controlBackgroundColor))
+                .fill(isHovered && action != nil
+                      ? Color(nsColor: .controlAccentColor).opacity(0.06)
+                      : Color(nsColor: .controlBackgroundColor))
         )
         .overlay(
             RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .stroke(Color(nsColor: .separatorColor).opacity(0.55), lineWidth: 1)
+                .stroke(isHovered && action != nil
+                        ? accent.opacity(0.5)
+                        : Color(nsColor: .separatorColor).opacity(0.55),
+                        lineWidth: 1)
         )
+        .animation(.easeOut(duration: 0.12), value: isHovered)
     }
 }
 

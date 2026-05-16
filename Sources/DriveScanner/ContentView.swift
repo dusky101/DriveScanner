@@ -18,6 +18,7 @@ struct ContentView: View {
     @State private var statusMessage = ""
     @State private var isExporting = false
     @State private var showingBundleSheet = false
+    @State private var showingBrewDetail = false
     @State private var measuringIDs: Set<CandidateItem.ID> = []
     @State private var fileNamesByID: [CandidateItem.ID: [String]] = [:]
     @State private var sortOrder: [KeyPathComparator<CandidateItem>] = [
@@ -64,7 +65,8 @@ struct ContentView: View {
                     mediaMeasurements: mediaMeasurements,
                     mediaLoading: mediaLoading,
                     homebrewInfo: homebrewInfo,
-                    brewLoading: brewLoading
+                    brewLoading: brewLoading,
+                    onOpenHomebrew: { showingBrewDetail = true }
                 )
                 TopLevelFoldersSection(
                     folders: $topLevelFolders,
@@ -111,6 +113,11 @@ struct ContentView: View {
                     Task { @MainActor in await performBundle(config: config) }
                 }
             )
+        }
+        .sheet(isPresented: $showingBrewDetail) {
+            if let info = homebrewInfo, !info.isEmpty {
+                HomebrewDetailSheet(info: info, onDismiss: { showingBrewDetail = false })
+            }
         }
     }
 
