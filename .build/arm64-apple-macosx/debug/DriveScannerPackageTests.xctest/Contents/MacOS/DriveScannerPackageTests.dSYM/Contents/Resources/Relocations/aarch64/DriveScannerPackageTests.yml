@@ -1,5 +1,0 @@
----
-triple:          'arm64-apple-darwin'
-binary-path:     '/Users/marcoliff/Codingapps/DriveScanner/.build/arm64-apple-macosx/debug/DriveScannerPackageTests.xctest/Contents/MacOS/DriveScannerPackageTests'
-relocations:     []
-...

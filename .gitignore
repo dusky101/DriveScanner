@@ -1,0 +1,41 @@
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Swift Package Manager
+.build/
+.swiftpm/
+Packages/
+*.xcodeproj
+xcuserdata/
+DerivedData/
+
+# Xcode
+*.pbxuser
+*.mode1v3
+*.mode2v3
+*.perspectivev3
+*.xccheckout
+*.moved-aside
+*.hmap
+*.ipa
+*.dSYM.zip
+*.dSYM
+
+# Workspace user state
+*.xcworkspace/xcuserdata/
+*.xcodeproj/project.xcworkspace/xcuserdata/
+*.xcodeproj/xcuserdata/
+
+# Swift Playgrounds
+timeline.xctimeline
+playground.xcworkspace
+
+# Local config
+.env
+.env.local
+*.local
+
+# Claude Code per-user settings (keep team-level .claude/settings.json shareable)
+.claude/settings.local.json
