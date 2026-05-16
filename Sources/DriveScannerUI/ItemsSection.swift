@@ -113,8 +113,20 @@ struct ItemsSection: View {
         }
     }
 
+    private var activeItems: [CandidateItem] {
+        visibleCandidates.filter { !previouslyCopiedIDs.contains($0.id) }
+    }
+
+    private var migratedItems: [CandidateItem] {
+        visibleCandidates.filter { previouslyCopiedIDs.contains($0.id) }
+    }
+
+    private var migratedTotalBytes: Int64 {
+        migratedItems.reduce(Int64(0)) { $0 + $1.sizeBytes }
+    }
+
     private var table: some View {
-        Table(visibleCandidates, sortOrder: $sortOrder) {
+        Table(of: CandidateItem.self, sortOrder: $sortOrder) {
             TableColumn("") { item in
                 Toggle("", isOn: binding(for: item))
                     .toggleStyle(.checkbox)
@@ -155,6 +167,22 @@ struct ItemsSection: View {
                     .truncationMode(.middle)
             }
             .width(min: 240, ideal: 320)
+        } rows: {
+            ForEach(activeItems) { item in
+                TableRow(item)
+            }
+            if !migratedItems.isEmpty {
+                Section {
+                    ForEach(migratedItems) { item in
+                        TableRow(item)
+                    }
+                } header: {
+                    MigratedSectionHeader(
+                        count: migratedItems.count,
+                        sizeBytes: migratedTotalBytes
+                    )
+                }
+            }
         }
         .tableStyle(.inset(alternatesRowBackgrounds: true))
         .frame(minHeight: 200, maxHeight: .infinity)

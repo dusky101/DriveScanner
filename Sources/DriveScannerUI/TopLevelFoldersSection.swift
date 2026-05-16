@@ -52,8 +52,26 @@ struct TopLevelFoldersSection: View {
         .frame(maxHeight: .infinity)
     }
 
+    /// Folders that still have at least one child to migrate (under current re-copy state).
+    private var activeFolders: [TopLevelFolder] {
+        folders.filter { folder in
+            folder.childIDs.isEmpty || !folder.childIDs.allSatisfy { previouslyCopiedIDs.contains($0) }
+        }
+    }
+
+    /// Folders where every child has already been migrated.
+    private var migratedFolders: [TopLevelFolder] {
+        folders.filter { folder in
+            !folder.childIDs.isEmpty && folder.childIDs.allSatisfy { previouslyCopiedIDs.contains($0) }
+        }
+    }
+
+    private var migratedTotalBytes: Int64 {
+        migratedFolders.reduce(Int64(0)) { $0 + $1.sizeBytes }
+    }
+
     private var table: some View {
-        Table(folders, sortOrder: $sortOrder) {
+        Table(of: TopLevelFolder.self, sortOrder: $sortOrder) {
             TableColumn("") { folder in
                 Toggle("", isOn: binding(for: folder))
                     .toggleStyle(.checkbox)
@@ -81,6 +99,22 @@ struct TopLevelFoldersSection: View {
                     .foregroundStyle(.secondary)
             }
             .width(min: 90, ideal: 110, max: 140)
+        } rows: {
+            ForEach(activeFolders) { folder in
+                TableRow(folder)
+            }
+            if !migratedFolders.isEmpty {
+                Section {
+                    ForEach(migratedFolders) { folder in
+                        TableRow(folder)
+                    }
+                } header: {
+                    MigratedSectionHeader(
+                        count: migratedFolders.count,
+                        sizeBytes: migratedTotalBytes
+                    )
+                }
+            }
         }
         .tableStyle(.inset(alternatesRowBackgrounds: true))
         .frame(minHeight: 200, maxHeight: .infinity)

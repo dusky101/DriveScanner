@@ -60,3 +60,30 @@ struct PanelHint: View {
         )
     }
 }
+
+// MARK: - Section header for the "Already migrated" group inside each panel.
+//
+// Used as a Table section `header:` view so migrated rows appear visually
+// separated from the active ones, with a count + total size.
+
+struct MigratedSectionHeader: View {
+    let count: Int
+    let sizeBytes: Int64
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "checkmark.seal.fill")
+                .foregroundStyle(.green)
+                .font(.callout)
+            Text("Already migrated")
+                .font(.subheadline.weight(.semibold))
+            Text("·")
+                .foregroundStyle(.tertiary)
+            Text("\(count) · \(ByteCountFormatter.string(fromByteCount: sizeBytes, countStyle: .file))")
+                .font(.caption.monospacedDigit())
+                .foregroundStyle(.secondary)
+            Spacer(minLength: 0)
+        }
+        .padding(.vertical, 4)
+    }
+}
