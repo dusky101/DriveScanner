@@ -365,6 +365,187 @@ struct HTMLReportBuilderTests {
     }
 }
 
+@Suite("BundleBuilder")
+struct BundleBuilderTests {
+    @Test("makePlan separates devConfig items into dotfiles/ and others into data/")
+    func planSplitsCategories() {
+        let home = URL(fileURLWithPath: "/Users/test")
+        let items = [
+            CandidateItem(
+                url: home.appendingPathComponent("Codingapps/DriveScanner"),
+                name: "DriveScanner",
+                isDirectory: true, isSymlink: false,
+                sizeBytes: 1000, modificationDate: nil,
+                category: .codeProject, stack: .swift
+            ),
+            CandidateItem(
+                url: home.appendingPathComponent(".claude"),
+                name: ".claude",
+                isDirectory: true, isSymlink: false,
+                sizeBytes: 500, modificationDate: nil,
+                category: .devConfig
+            ),
+            CandidateItem(
+                url: home.appendingPathComponent("notes.txt"),
+                name: "notes.txt",
+                isDirectory: false, isSymlink: false,
+                sizeBytes: 100, modificationDate: nil,
+                category: .looseFile
+            ),
+        ]
+        let plan = BundleBuilder.makePlan(items: items, homeURL: home)
+        let byName = Dictionary(uniqueKeysWithValues: plan.map { ($0.sourceURL.lastPathComponent, $0) })
+
+        #expect(byName["DriveScanner"]?.kind == .data)
+        #expect(byName["DriveScanner"]?.bundleRelativePath == "data/Codingapps/DriveScanner")
+        #expect(byName["DriveScanner"]?.restoreRelativePath == "Codingapps/DriveScanner")
+
+        #expect(byName[".claude"]?.kind == .dotfile)
+        #expect(byName[".claude"]?.bundleRelativePath == "dotfiles/.claude")
+        #expect(byName[".claude"]?.restoreRelativePath == ".claude")
+
+        #expect(byName["notes.txt"]?.kind == .data)
+        #expect(byName["notes.txt"]?.bundleRelativePath == "data/notes.txt")
+    }
+
+    @Test("renderManifest produces tab-separated lines with header comment")
+    func manifestTSV() {
+        let plan = [
+            BundleManifestItem(
+                sourceURL: URL(fileURLWithPath: "/Users/test/Codingapps/X"),
+                kind: .data,
+                bundleRelativePath: "data/Codingapps/X",
+                restoreRelativePath: "Codingapps/X"
+            ),
+            BundleManifestItem(
+                sourceURL: URL(fileURLWithPath: "/Users/test/.claude"),
+                kind: .dotfile,
+                bundleRelativePath: "dotfiles/.claude",
+                restoreRelativePath: ".claude"
+            ),
+        ]
+        let manifest = BundleBuilder.renderManifest(plan)
+        let lines = manifest.split(separator: "\n", omittingEmptySubsequences: true)
+        #expect(lines[0].hasPrefix("#"))
+        #expect(lines.contains("data\tdata/Codingapps/X\tCodingapps/X"))
+        #expect(lines.contains("dotfile\tdotfiles/.claude\t.claude"))
+    }
+
+    @Test("renderRestoreScript is bash, has manifest loop, and omits brew block when no Brewfile")
+    func restoreScriptShape() {
+        let user = UserContext(fullName: "Ada", shortName: "ada", hostName: "h", osVersion: "macOS 15")
+        let withBrew = BundleBuilder.renderRestoreScript(hasBrewfile: true, userContext: user, generatedAt: Date())
+        let withoutBrew = BundleBuilder.renderRestoreScript(hasBrewfile: false, userContext: user, generatedAt: Date())
+
+        #expect(withBrew.hasPrefix("#!/bin/bash"))
+        #expect(withBrew.contains("MANIFEST=\"$BUNDLE_DIR/manifest.tsv\""))
+        #expect(withBrew.contains("Brewfile present in bundle."))
+        #expect(!withoutBrew.contains("Brewfile present in bundle."))
+    }
+
+    @Test("build creates bundle dir, manifest, restore.sh (0755), README, inventory, and optional Brewfile")
+    func buildEndToEnd() async throws {
+        let fm = FileManager.default
+        let home = fm.temporaryDirectory.appendingPathComponent("DriveScannerBundleHome-\(UUID().uuidString)", isDirectory: true)
+        let bundleDir = fm.temporaryDirectory.appendingPathComponent("DriveScannerBundleOut-\(UUID().uuidString)", isDirectory: true)
+        try fm.createDirectory(at: home, withIntermediateDirectories: true)
+        defer {
+            try? fm.removeItem(at: home)
+            try? fm.removeItem(at: bundleDir)
+        }
+
+        // Set up a project + a dotfile inside the fake home
+        let proj = home.appendingPathComponent("Codingapps/MyApp", isDirectory: true)
+        try fm.createDirectory(at: proj, withIntermediateDirectories: true)
+        try "// swift".write(to: proj.appendingPathComponent("Package.swift"), atomically: true, encoding: .utf8)
+        let dot = home.appendingPathComponent(".claude", isDirectory: true)
+        try fm.createDirectory(at: dot, withIntermediateDirectories: true)
+        try "{}".write(to: dot.appendingPathComponent("settings.json"), atomically: true, encoding: .utf8)
+
+        let items = [
+            CandidateItem(url: proj, name: "MyApp",
+                          isDirectory: true, isSymlink: false,
+                          sizeBytes: 0, modificationDate: nil,
+                          category: .codeProject, stack: .swift),
+            CandidateItem(url: dot, name: ".claude",
+                          isDirectory: true, isSymlink: false,
+                          sizeBytes: 0, modificationDate: nil,
+                          category: .devConfig),
+        ]
+        let user = UserContext(fullName: "Ada Lovelace", shortName: "ada", hostName: "ada-mbp", osVersion: "macOS 15.0")
+
+        let result = try await BundleBuilder.build(
+            bundleURL: bundleDir,
+            selectedItems: items,
+            homeURL: home,
+            userContext: user,
+            htmlReport: "<!doctype html><html><body>hello</body></html>",
+            brewfile: "tap \"homebrew/cask\"\nbrew \"git\"\n"
+        )
+
+        #expect(result.copiedCount == 2)
+        #expect(result.skippedCount == 0)
+
+        // Bundle layout
+        #expect(fm.fileExists(atPath: bundleDir.appendingPathComponent("README.txt").path))
+        #expect(fm.fileExists(atPath: bundleDir.appendingPathComponent("manifest.tsv").path))
+        #expect(fm.fileExists(atPath: bundleDir.appendingPathComponent("inventory.html").path))
+        #expect(fm.fileExists(atPath: bundleDir.appendingPathComponent("Brewfile").path))
+        #expect(fm.fileExists(atPath: bundleDir.appendingPathComponent("data/Codingapps/MyApp/Package.swift").path))
+        #expect(fm.fileExists(atPath: bundleDir.appendingPathComponent("dotfiles/.claude/settings.json").path))
+
+        // restore.sh is executable
+        let restorePath = bundleDir.appendingPathComponent("restore.sh").path
+        #expect(fm.fileExists(atPath: restorePath))
+        let attrs = try fm.attributesOfItem(atPath: restorePath)
+        let perms = (attrs[.posixPermissions] as? NSNumber)?.uint16Value ?? 0
+        #expect(perms & 0o111 != 0, "restore.sh should be executable")
+
+        // Brewfile content preserved
+        let brewfileContent = try String(contentsOfFile: bundleDir.appendingPathComponent("Brewfile").path, encoding: .utf8)
+        #expect(brewfileContent.contains("brew \"git\""))
+    }
+
+    @Test("defaultBundleName uses short name and ISO-style date")
+    func defaultName() {
+        let user = UserContext(fullName: "Ada Lovelace", shortName: "ada", hostName: "h", osVersion: "macOS 15")
+        let date = Date(timeIntervalSince1970: 1_715_817_600)  // 2024-05-16 UTC
+        let name = BundleBuilder.defaultBundleName(userContext: user, date: date)
+        #expect(name.hasPrefix("DriveScanner-ada-"))
+        // YYYY-MM-DD pattern at the end
+        let suffix = String(name.suffix(10))
+        #expect(suffix.matches(of: try! Regex(#"^\d{4}-\d{2}-\d{2}$"#)).count == 1)
+    }
+}
+
+@Suite("ArchiveService")
+struct ArchiveServiceTests {
+    @Test("createTarGz round-trips a small bundle")
+    func tarGzRoundTrip() async throws {
+        let fm = FileManager.default
+        let work = fm.temporaryDirectory.appendingPathComponent("DriveScannerTar-\(UUID().uuidString)", isDirectory: true)
+        let bundle = work.appendingPathComponent("bundle", isDirectory: true)
+        try fm.createDirectory(at: bundle, withIntermediateDirectories: true)
+        try "alpha".write(to: bundle.appendingPathComponent("a.txt"), atomically: true, encoding: .utf8)
+        try "beta".write(to: bundle.appendingPathComponent("b.txt"), atomically: true, encoding: .utf8)
+        defer { try? fm.removeItem(at: work) }
+
+        let archive = work.appendingPathComponent("bundle.tar.gz")
+        try await ArchiveService.createTarGz(bundleDir: bundle, outputArchive: archive)
+
+        #expect(fm.fileExists(atPath: archive.path))
+        let size = (try? fm.attributesOfItem(atPath: archive.path)[.size] as? Int) ?? 0
+        #expect(size > 0)
+    }
+
+    @Test("sanitizedVolumeName strips disallowed characters")
+    func volumeName() {
+        #expect(ArchiveService.sanitizedVolumeName("Ada/Migration:Bundle") == "Ada-Migration-Bundle")
+        #expect(ArchiveService.sanitizedVolumeName("   ") == "DriveScanner-bundle")
+        #expect(ArchiveService.sanitizedVolumeName("My_Bundle 2026-05-16") == "My_Bundle 2026-05-16")
+    }
+}
+
 @Suite("ExportService")
 struct ExportServiceTests {
     @Test("copyItems uses numeric suffix on collision")

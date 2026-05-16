@@ -14,6 +14,7 @@ struct ContentView: View {
     @State private var brewLoading = false
     @State private var statusMessage = ""
     @State private var isExporting = false
+    @State private var showingBundleSheet = false
 
     private var visibleCandidates: [CandidateItem] {
         let q = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -104,10 +105,9 @@ struct ContentView: View {
             HStack(spacing: 10) {
                 Button("Save HTML report…") { saveHTMLReport() }
                     .disabled(selectedURLs.isEmpty || isExporting)
-                Button("Copy selected to…") { copySelected() }
+                Button("Create migration bundle…") { showingBundleSheet = true }
                     .disabled(selectedURLs.isEmpty || isExporting)
-                Button("Zip selected…") { zipSelected() }
-                    .disabled(selectedURLs.isEmpty || isExporting)
+                    .buttonStyle(.borderedProminent)
             }
 
             if isExporting {
@@ -130,6 +130,16 @@ struct ContentView: View {
         .task {
             await measureMediaFoldersInitial()
             await loadHomebrew()
+        }
+        .sheet(isPresented: $showingBundleSheet) {
+            BundleSheet(
+                defaultBundleName: BundleBuilder.defaultBundleName(userContext: currentUserContext()),
+                onCancel: { showingBundleSheet = false },
+                onCreate: { config in
+                    showingBundleSheet = false
+                    Task { @MainActor in await performBundle(config: config) }
+                }
+            )
         }
     }
 
@@ -259,6 +269,28 @@ struct ContentView: View {
         return f.string(fromByteCount: n)
     }
 
+    private func currentUserContext() -> UserContext {
+        UserContext(
+            fullName: NSFullUserName(),
+            shortName: NSUserName(),
+            hostName: Host.current().localizedName ?? ProcessInfo.processInfo.hostName,
+            osVersion: ProcessInfo.processInfo.operatingSystemVersionString
+        )
+    }
+
+    private func buildCurrentHtmlReport(selected: [CandidateItem], excluded: [CandidateItem], userContext: UserContext) throws -> String {
+        let rollup = try HomeScanner.buildFolderRollup(forSelectedURLs: selected.map(\.url))
+        let mediaList = MediaFolder.allCases.compactMap { mediaMeasurements[$0] }
+        return HTMLReportBuilder.buildReport(
+            userContext: userContext,
+            selectedItems: selected,
+            excludedItems: excluded,
+            rollup: rollup,
+            mediaMeasurements: mediaList,
+            homebrew: homebrewInfo
+        )
+    }
+
     private func saveHTMLReport() {
         let panel = NSSavePanel()
         panel.allowedContentTypes = [.html]
@@ -275,27 +307,14 @@ struct ContentView: View {
     private func performHTMLExport(to url: URL) async {
         isExporting = true
         statusMessage = "Building HTML…"
-        defer {
-            isExporting = false
-        }
+        defer { isExporting = false }
         do {
-            let rollup = try HomeScanner.buildFolderRollup(forSelectedURLs: selectedURLs)
             let selectedItems = candidates.filter { selection.contains($0.id) }
             let excludedItems = candidates.filter { !selection.contains($0.id) }
-            let userContext = UserContext(
-                fullName: NSFullUserName(),
-                shortName: NSUserName(),
-                hostName: Host.current().localizedName ?? ProcessInfo.processInfo.hostName,
-                osVersion: ProcessInfo.processInfo.operatingSystemVersionString
-            )
-            let mediaList = MediaFolder.allCases.compactMap { mediaMeasurements[$0] }
-            let html = HTMLReportBuilder.buildReport(
-                userContext: userContext,
-                selectedItems: selectedItems,
-                excludedItems: excludedItems,
-                rollup: rollup,
-                mediaMeasurements: mediaList,
-                homebrew: homebrewInfo
+            let html = try buildCurrentHtmlReport(
+                selected: selectedItems,
+                excluded: excludedItems,
+                userContext: currentUserContext()
             )
             try html.write(to: url, atomically: true, encoding: .utf8)
             statusMessage = "Saved report to \(url.path)"
@@ -304,65 +323,93 @@ struct ContentView: View {
         }
     }
 
-    private func copySelected() {
-        let panel = NSOpenPanel()
-        panel.canChooseDirectories = true
-        panel.canChooseFiles = false
-        panel.allowsMultipleSelection = false
-        panel.prompt = "Choose destination folder"
-        panel.begin { response in
-            guard response == .OK, let dest = panel.url else { return }
-            Task { @MainActor in
-                await performCopy(to: dest)
-            }
-        }
-    }
-
     @MainActor
-    private func performCopy(to dest: URL) async {
+    private func performBundle(config: BundleSheetConfig) async {
         isExporting = true
-        statusMessage = "Copying…"
+        statusMessage = "Preparing bundle…"
         defer { isExporting = false }
+
+        let selectedItems = candidates.filter { selection.contains($0.id) }
+        let excludedItems = candidates.filter { !selection.contains($0.id) }
+        let userContext = currentUserContext()
+        let homeURL = URL(fileURLWithPath: NSHomeDirectory(), isDirectory: true)
+        let fm = FileManager.default
+
+        // For archive formats, build in temp, then archive into destination.
+        // For folder format, build directly under destination.
+        let workingDir: URL
+        let isTemp: Bool
+        if config.format == .folder {
+            workingDir = config.destinationDirectory.appendingPathComponent(config.bundleName, isDirectory: true)
+            isTemp = false
+        } else {
+            workingDir = fm.temporaryDirectory
+                .appendingPathComponent("DriveScannerBundle-\(UUID().uuidString)", isDirectory: true)
+                .appendingPathComponent(config.bundleName, isDirectory: true)
+            isTemp = true
+        }
+
         do {
-            try await ExportService.copyItems(selectedURLs, to: dest) { p in
+            let html = try buildCurrentHtmlReport(
+                selected: selectedItems,
+                excluded: excludedItems,
+                userContext: userContext
+            )
+            let brewfile = (homebrewInfo?.isEmpty == false) ? homebrewInfo?.brewfile : nil
+
+            statusMessage = "Copying \(selectedItems.count) item(s)…"
+            let result = try await BundleBuilder.build(
+                bundleURL: workingDir,
+                selectedItems: selectedItems,
+                homeURL: homeURL,
+                userContext: userContext,
+                htmlReport: html,
+                brewfile: brewfile
+            ) { progress in
                 Task { @MainActor in
-                    let step = exportProgressStep(p)
-                    statusMessage = "Copying \(step)/\(p.totalCount): \(p.currentPath)"
+                    let step = exportProgressStep(progress)
+                    if progress.currentPath.isEmpty {
+                        statusMessage = "Finalising bundle…"
+                    } else {
+                        let name = (progress.currentPath as NSString).lastPathComponent
+                        statusMessage = "Copying \(step)/\(progress.totalCount): \(name)"
+                    }
                 }
             }
-            statusMessage = "Copied \(selectedURLs.count) item(s) to \(dest.path)"
-        } catch {
-            statusMessage = "Copy failed: \(error.localizedDescription)"
-        }
-    }
 
-    private func zipSelected() {
-        let panel = NSSavePanel()
-        panel.allowedContentTypes = [.zip]
-        panel.nameFieldStringValue = "DriveScanner-selection.zip"
-        panel.begin { response in
-            guard response == .OK, let url = panel.url else { return }
-            Task { @MainActor in
-                await performZip(to: url)
-            }
-        }
-    }
+            switch config.format {
+            case .folder:
+                statusMessage = "Bundle ready at \(result.bundleURL.path) (\(result.copiedCount) copied, \(result.skippedCount) skipped)"
 
-    @MainActor
-    private func performZip(to url: URL) async {
-        isExporting = true
-        statusMessage = "Zipping with ditto…"
-        defer { isExporting = false }
-        do {
-            try await ExportService.zipItems(selectedURLs, to: url) { p in
-                Task { @MainActor in
-                    let step = exportProgressStep(p)
-                    statusMessage = "Zipping \(step)/\(p.totalCount): \(p.currentPath)"
-                }
+            case .targz:
+                let outURL = config.destinationDirectory.appendingPathComponent("\(config.bundleName).tar.gz")
+                statusMessage = "Creating tar.gz…"
+                try await ArchiveService.createTarGz(bundleDir: workingDir, outputArchive: outURL)
+                statusMessage = "Bundle ready at \(outURL.path)"
+
+            case .encryptedDmg:
+                let outURL = config.destinationDirectory.appendingPathComponent("\(config.bundleName).dmg")
+                let volumeName = ArchiveService.sanitizedVolumeName(config.bundleName)
+                statusMessage = "Creating encrypted DMG (this can take a while)…"
+                try await ArchiveService.createEncryptedDmg(
+                    bundleDir: workingDir,
+                    outputDmg: outURL,
+                    volumeName: volumeName,
+                    password: config.password
+                )
+                statusMessage = "Encrypted DMG ready at \(outURL.path)"
             }
-            statusMessage = "Created \(url.path)"
+
+            if isTemp {
+                let tempRoot = workingDir.deletingLastPathComponent()
+                try? fm.removeItem(at: tempRoot)
+            }
         } catch {
-            statusMessage = "Zip failed: \(error.localizedDescription)"
+            statusMessage = "Bundle failed: \(error.localizedDescription)"
+            if isTemp {
+                let tempRoot = workingDir.deletingLastPathComponent()
+                try? fm.removeItem(at: tempRoot)
+            }
         }
     }
 }
