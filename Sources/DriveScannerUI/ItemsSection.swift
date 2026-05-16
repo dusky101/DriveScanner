@@ -32,17 +32,29 @@ struct ItemsSection: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack(spacing: 12) {
-                SectionHeader(
-                    icon: "doc.on.doc.fill",
-                    title: "Items to migrate",
-                    subtitle: subtitle,
-                    count: candidates.isEmpty ? nil : visibleCandidates.count,
-                    accent: Color(red: 0.10, green: 0.62, blue: 0.34)
-                )
-                SelectionSummary(count: selectedCount, sizeBytes: selectedBytes)
-            }
+        VStack(alignment: .leading, spacing: 8) {
+            headerCard
+            bodyCard
+        }
+        .frame(maxHeight: .infinity)
+    }
+
+    private var headerCard: some View {
+        HStack(spacing: 12) {
+            SectionHeader(
+                icon: "doc.on.doc.fill",
+                title: "Items to migrate",
+                subtitle: subtitle,
+                count: candidates.isEmpty ? nil : visibleCandidates.count,
+                accent: Color(red: 0.10, green: 0.62, blue: 0.34)
+            )
+            SelectionSummary(count: selectedCount, sizeBytes: selectedBytes)
+        }
+        .card()
+    }
+
+    private var bodyCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
             searchAndActions
             content
         }
@@ -52,12 +64,12 @@ struct ItemsSection: View {
 
     private var subtitle: String {
         if !searchText.isEmpty {
-            return "Search matches folder names and any file inside"
+            return "Search matches folder + file names"
         }
         if copiedCountInVisible > 0 {
-            return "\(copiedCountInVisible) item(s) already migrated — toggle \"Allow re-copy\" to re-include them"
+            return "\(copiedCountInVisible) already migrated · use Allow re-copy to re-include"
         }
-        return "Includes expanded projects and developer configs"
+        return "Includes expanded projects and dev configs"
     }
 
     private var searchAndActions: some View {

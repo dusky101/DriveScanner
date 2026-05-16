@@ -65,6 +65,8 @@ struct SectionHeader: View {
                     Text(subtitle)
                         .font(.caption)
                         .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
                 }
             }
             Spacer(minLength: 0)

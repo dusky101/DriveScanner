@@ -12,30 +12,37 @@ struct TopLevelFoldersSection: View {
     let selectedBytes: Int64
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack(spacing: 12) {
-                SectionHeader(
-                    icon: "house.fill",
-                    title: "Top-level folders",
-                    subtitle: "Tick to cascade · partial when only some children selected",
-                    count: folders.isEmpty ? nil : folders.count,
-                    accent: Color(red: 0.04, green: 0.50, blue: 0.96)
-                )
-                SelectionSummary(count: selectedCount, sizeBytes: selectedBytes)
-            }
-            content
+        VStack(alignment: .leading, spacing: 8) {
+            headerCard
+            bodyCard
         }
-        .card()
         .frame(maxHeight: .infinity)
     }
 
-    @ViewBuilder
-    private var content: some View {
-        if folders.isEmpty {
-            EmptyStateView(icon: "tray", text: "Scan to populate.")
-        } else {
-            table
+    private var headerCard: some View {
+        HStack(spacing: 12) {
+            SectionHeader(
+                icon: "house.fill",
+                title: "Top-level folders",
+                subtitle: "Tick to cascade · partial when only some selected",
+                count: folders.isEmpty ? nil : folders.count,
+                accent: Color(red: 0.04, green: 0.50, blue: 0.96)
+            )
+            SelectionSummary(count: selectedCount, sizeBytes: selectedBytes)
         }
+        .card()
+    }
+
+    private var bodyCard: some View {
+        Group {
+            if folders.isEmpty {
+                EmptyStateView(icon: "tray", text: "Scan to populate.")
+            } else {
+                table
+            }
+        }
+        .card()
+        .frame(maxHeight: .infinity)
     }
 
     private var table: some View {
